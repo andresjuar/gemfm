@@ -5,7 +5,8 @@ De la primera escucha a la primera fila: descubre artistas emergentes, ve a sus 
 - **Gustos**: al entrar por primera vez eliges los estilos que te gustan (Indie, Rock, Folk, Cumbia…). Se cambian desde tu perfil.
 - **Discover**: desliza tarjetas de artistas (Save / Skip). Primero salen los que coinciden con tus gustos ("Because you like Folk"). Reto diario de 5 artistas, luego ronda bonus.
 - **Live**: tocadas en Guadalajara. Hacer check-in te da un sello de *early fan* con tu número de fan.
-- **Friends**: feed de lo que guardan, recomiendan y a dónde van tus amigos.
+- **Cuentas**: registro e inicio de sesión con correo o usuario y contraseña. Los botones de Spotify, Apple Music y Deezer aparecen como *Soon*.
+- **Friends**: feed estilo Instagram con publicaciones altas (foto del artista), likes (también con doble toque), comentarios, guardar al artista, escucharlo y seguir a gente desde el feed o desde *Suggested for you*.
 - **/artists**: lado del artista: agregar artistas, tocadas, links de Spotify y revisar lo que encontró el **radar de artistas emergentes**.
 
 ## Stack
@@ -39,7 +40,9 @@ npm install
 npm run dev
 ```
 
-Abre http://localhost:5173. La primera vez se crea una base de datos local en `.pglite/` con datos demo; no necesitas Supabase para desarrollar.
+Abre http://localhost:5173 y crea una cuenta. La primera vez se crea una base de datos local en `.pglite/` con datos demo; no necesitas Supabase para desarrollar.
+
+> Si tu `.env` tiene `DATABASE_URL`, `npm run dev` usa Supabase (datos reales). Déjala vacía para usar la base local.
 
 En tu celular (misma red Wi-Fi) abre la dirección **Network** que imprime Vite, por ejemplo `http://192.168.x.x:5173`.
 
@@ -115,12 +118,14 @@ npm run import:artists -- data/artists.csv --replace --demo-gigs --demo-activity
 
 ## API
 
-Header `x-user-id` = usuario demo. Las rutas marcadas con 🔑 piden `x-admin-key` si `ADMIN_KEY` está configurada.
+La sesión va en una cookie httpOnly (`gemfm_session`) que pone `/api/auth/*`. Las rutas marcadas con 🔑 piden `x-admin-key` si `ADMIN_KEY` está configurada.
 
 | Método | Ruta | |
 |---|---|---|
 | GET | /api/health | Estado y tipo de base de datos |
-| GET | /api/users | Cuentas demo |
+| POST | /api/auth/signup | `{ name, handle, email, password }` crea la cuenta e inicia sesión |
+| POST | /api/auth/login | `{ login, password }` (login = correo o usuario) |
+| POST | /api/auth/logout | Cierra la sesión |
 | GET | /api/me | Usuario actual, gustos, puntos, progreso del día |
 | GET | /api/tags | Etiquetas de gustos y cuántos artistas tiene cada una |
 | PUT | /api/me/tags | `{ tags: ["indie", "folk"] }` guarda los gustos |
@@ -132,7 +137,10 @@ Header `x-user-id` = usuario demo. Las rutas marcadas con 🔑 piden `x-admin-ke
 | GET | /api/artists/:id/preview | Preview de 30 s (Deezer) |
 | GET | /api/gigs?saved=1 | Próximas tocadas |
 | POST | /api/gigs/:id/checkin | Check-in, regresa número de fan |
-| GET | /api/feed | Actividad de amigos |
+| GET | /api/feed | Publicaciones (recomendaciones, guardados, check-ins) con likes y comentarios; `following` separa tu feed de las sugeridas |
+| GET | /api/people/suggested | Gente que todavía no sigues |
+| POST/DELETE | /api/posts/:key/like | Like / quitar like |
+| GET/POST | /api/posts/:key/comments | Ver / escribir comentarios (`{ body }`) |
 | POST | /api/recommendations | `{ artistId, note }` |
 | GET | /api/artists?status= | `approved` (default), `pending`, `rejected` |
 | POST 🔑 | /api/artists | Nuevo artista (se vincula a Deezer si el nombre coincide) |
@@ -143,6 +151,12 @@ Header `x-user-id` = usuario demo. Las rutas marcadas con 🔑 piden `x-admin-ke
 | POST 🔑 | /api/gigs | `{ artistId, venueId, startsAt, price }` |
 | POST 🔑 | /api/radar | `{ seeds?, maxFans? }` busca artistas emergentes |
 
+## Cuentas demo
+
+Los usuarios de `seed.sql` (Andrés, Ximena, Diego, Sofía, Mateo, Valeria) no tienen correo ni contraseña: **nadie puede entrar con ellos**. Solo existen como gente a la que seguir, con publicaciones, likes y comentarios para que el feed no esté vacío.
+
+Las contraseñas se guardan con scrypt (nunca en texto) y la sesión dura 30 días.
+
 ## Reglas del demo
 
 - Puntos: skip +1, save +3, reto diario +10, recomendación +5, check-in +25.
@@ -151,4 +165,4 @@ Header `x-user-id` = usuario demo. Las rutas marcadas con 🔑 piden `x-admin-ke
 
 ## Todavía no está en el MVP
 
-Cuentas reales (login con Spotify / Apple Music, ver `docs/investigacion.md`), check-ins verificados, venta de boletos, panel para venues, ranking más fino (hoy Discover prioriza por etiquetas coincidentes y luego es aleatorio).
+Login con Spotify / Apple Music / Deezer (ver `docs/investigacion.md`), recuperar contraseña y verificar correo, límite de intentos de login, check-ins verificados, venta de boletos, panel para venues, ranking más fino (hoy Discover prioriza por etiquetas coincidentes y luego es aleatorio).

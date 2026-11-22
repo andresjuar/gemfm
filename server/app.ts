@@ -1,11 +1,15 @@
 // gem.fm API (Hono). The same app runs locally (server/dev.ts) and on
 // Netlify Functions (netlify/functions/api.ts).
 import { Hono, type Context, type Next } from 'hono';
+import { deleteCookie, getCookie, setCookie } from 'hono/cookie';
 import type {
-  Artist, DiscoverArtist, FeedItem, Gig, Person, Preview, Stamp, Stats, Tag, User, Venue,
+  Artist, DiscoverArtist, FeedItem, Gig, Person, PostComment, Preview, Stamp, Stats, Tag, User, Venue,
 } from '../shared/types';
 import { getDb } from './db';
-import { randomColor } from './lib/colors';
+import {
+  EMAIL_RE, HANDLE_RE, SESSION_COOKIE, SESSION_DAYS, hashPassword, hashToken, newSessionToken, verifyPassword,
+} from './lib/auth';
+import { randomAvatarColor, randomColor } from './lib/colors';
 import { findArtistByName, pictureOf, topTrack } from './lib/deezer';
 import { findPhoto, spotifyThumbnail } from './lib/photos';
 import { runRadar } from './lib/radar';
@@ -18,10 +22,11 @@ const TZ = process.env.APP_TIMEZONE || 'America/Mexico_City';
 type Env = { Variables: { user: User } };
 export const app = new Hono<Env>().basePath('/api');
 
+type ErrorStatus = 400 | 401 | 403 | 404 | 409;
 class HttpError extends Error {
-  constructor(public status: 400 | 401 | 403 | 404, message: string) { super(message); }
+  constructor(public status: ErrorStatus, message: string) { super(message); }
 }
-function fail(status: 400 | 401 | 403 | 404, message: string): never {
+function fail(status: ErrorStatus, message: string): never {
   throw new HttpError(status, message);
 }
 
@@ -37,14 +42,33 @@ const toId = (v: unknown) => {
   return Number.isInteger(n) && n > 0 ? n : fail(400, 'Invalid id.');
 };
 
-// Demo auth: the client sends the chosen demo user's id.
+// Signed-in user from the session cookie.
 async function auth(c: Context<Env>, next: Next) {
-  const id = Number(c.req.header('x-user-id'));
+  const token = getCookie(c, SESSION_COOKIE);
   const db = await getDb();
-  const [user] = id ? await db.query<User>(`select ${USER_COLS} from users where id = $1`, [id]) : [];
-  if (!user) fail(401, 'Pick a demo user first.');
+  const [user] = token ? await db.query<User>(`
+    select ${USER_COLS.split(', ').map((col) => `u.${col}`).join(', ')}
+    from sessions s join users u on u.id = s.user_id
+    where s.token_hash = $1 and s.expires_at > now()`, [hashToken(token)]) : [];
+  if (!user) fail(401, 'Sign in to continue.');
   c.set('user', user);
   await next();
+}
+
+async function startSession(c: Context<Env>, userId: number) {
+  const token = newSessionToken();
+  const db = await getDb();
+  await db.query(`insert into sessions (token_hash, user_id, expires_at) values ($1, $2, now() + make_interval(days => $3))`,
+    [hashToken(token), userId, SESSION_DAYS]);
+  // Tidy up expired sessions now and then.
+  if (Math.random() < 0.05) await db.query('delete from sessions where expires_at < now()');
+  setCookie(c, SESSION_COOKIE, token, {
+    httpOnly: true,
+    sameSite: 'Lax',
+    secure: new URL(c.req.url).protocol === 'https:',
+    path: '/',
+    maxAge: SESSION_DAYS * 86400,
+  });
 }
 
 // Artist-side writes. Open if ADMIN_KEY isn't set (local dev); otherwise the
@@ -99,9 +123,51 @@ app.get('/health', async (c) => {
   return c.json({ ok: true, db: db.kind });
 });
 
-app.get('/users', async (c) => {
+// ---------- Accounts ----------
+app.post('/auth/signup', async (c) => {
+  const b = await c.req.json<{ name?: string; handle?: string; email?: string; password?: string }>();
+  const name = b.name?.trim() ?? '';
+  const handle = (b.handle ?? '').trim().replace(/^@/, '').toLowerCase();
+  const email = (b.email ?? '').trim().toLowerCase();
+  const password = b.password ?? '';
+  if (name.length < 2 || name.length > 40) fail(400, 'Enter your name (2–40 characters).');
+  if (!HANDLE_RE.test(handle)) fail(400, 'Username: 3–20 lowercase letters, numbers, dots or underscores.');
+  if (!EMAIL_RE.test(email) || email.length > 120) fail(400, 'Enter a valid email.');
+  if (password.length < 8 || password.length > 200) fail(400, 'Use a password with at least 8 characters.');
   const db = await getDb();
-  return c.json(await db.query<User>(`select ${USER_COLS} from users order by id`));
+  const taken = await db.query<{ email: string | null }>(
+    'select email from users where lower(email) = $1 or lower(handle) = $2', [email, handle]);
+  if (taken.some((t) => t.email === email)) fail(409, 'There’s already an account with that email. Sign in instead.');
+  if (taken.length) fail(409, 'That username is taken. Try another one.');
+  const [user] = await db.query<User>(`insert into users (name, handle, email, password_hash, color)
+    values ($1, $2, $3, $4, $5) returning ${USER_COLS}`, [name, handle, email, await hashPassword(password), randomAvatarColor()]);
+  await startSession(c, user.id);
+  return c.json(user);
+});
+
+app.post('/auth/login', async (c) => {
+  const b = await c.req.json<{ login?: string; password?: string }>();
+  const login = (b.login ?? '').trim().replace(/^@/, '').toLowerCase();
+  if (!login || !b.password) fail(400, 'Enter your email or username and your password.');
+  const db = await getDb();
+  const [row] = await db.query<{ id: number; password_hash: string | null }>(
+    'select id, password_hash from users where lower(email) = $1 or lower(handle) = $1 limit 1', [login]);
+  // Demo users have no password, so they can't be signed into.
+  const ok = await verifyPassword(b.password!, row?.password_hash ?? null);
+  if (!row || !ok) fail(401, 'Wrong email/username or password.');
+  await startSession(c, row.id);
+  const [user] = await db.query<User>(`select ${USER_COLS} from users where id = $1`, [row.id]);
+  return c.json(user);
+});
+
+app.post('/auth/logout', async (c) => {
+  const token = getCookie(c, SESSION_COOKIE);
+  if (token) {
+    const db = await getDb();
+    await db.query('delete from sessions where token_hash = $1', [hashToken(token)]);
+  }
+  deleteCookie(c, SESSION_COOKIE, { path: '/' });
+  return c.json({ ok: true });
 });
 
 app.get('/me', auth, async (c) => {
@@ -252,25 +318,107 @@ app.post('/gigs/:id/checkin', auth, async (c) => {
 });
 
 // ---------- Friends ----------
+// Posts are recommendations, saves and check-ins. Everyone's posts come back;
+// `following` tells the app which are from people you follow (your feed) and
+// which are suggestions you can follow from.
+const ALL_POSTS = `
+  select 'rec:' || r.id as key, 'rec' as type, r.created_at at, u.id user_id, u.name "user", u.handle, u.color user_color,
+    a.id artist_id, a.name artist, a.genre, a.city, a.color, a.image_url, a.spotify_url, a.deezer_id, r.note, null::text venue
+  from recommendations r join users u on u.id = r.user_id join artists a on a.id = r.artist_id
+  union all
+  select 'save:' || s.user_id || ':' || s.artist_id, 'save', s.created_at, u.id, u.name, u.handle, u.color,
+    a.id, a.name, a.genre, a.city, a.color, a.image_url, a.spotify_url, a.deezer_id, null, null
+  from swipes s join users u on u.id = s.user_id join artists a on a.id = s.artist_id
+  where s.liked
+  union all
+  select 'checkin:' || c.user_id || ':' || c.gig_id, 'checkin', c.created_at, u.id, u.name, u.handle, u.color,
+    a.id, a.name, a.genre, a.city, a.color, a.image_url, a.spotify_url, a.deezer_id, null, v.name
+  from checkins c join users u on u.id = c.user_id join gigs g on g.id = c.gig_id
+  join artists a on a.id = g.artist_id join venues v on v.id = g.venue_id`;
+
+const POST_EXTRAS = `
+  (select count(*)::int from post_likes l where l.post_key = p.key) likes,
+  exists(select 1 from post_likes l where l.post_key = p.key and l.user_id = $1) liked,
+  (select count(*)::int from post_comments pc where pc.post_key = p.key) comment_count,
+  coalesce((select json_agg(x order by x.created_at) from (
+    select pc.id, pc.body, pc.created_at, cu.id user_id, cu.name "user", cu.handle
+    from post_comments pc join users cu on cu.id = pc.user_id
+    where pc.post_key = p.key order by pc.created_at desc limit 2) x), '[]'::json) comments,
+  (p.user_id = $1 or exists(select 1 from follows f where f.follower_id = $1 and f.followee_id = p.user_id)) following,
+  exists(select 1 from swipes sw where sw.user_id = $1 and sw.artist_id = p.artist_id and sw.liked) saved`;
+
 app.get('/feed', auth, async (c) => {
   const db = await getDb();
   return c.json(await db.query<FeedItem>(`
-    with circle as (select followee_id id from follows where follower_id = $1 union select $1::int)
-    select * from (
-      select 'rec' as type, r.created_at at, u.id user_id, u.name "user", u.color user_color,
-        a.id artist_id, a.name artist, a.genre, a.color, a.image_url, a.spotify_url, a.deezer_id, r.note, null::text venue
-      from recommendations r join users u on u.id = r.user_id join artists a on a.id = r.artist_id
-      where r.user_id in (select id from circle)
-      union all
-      select 'save', s.created_at, u.id, u.name, u.color, a.id, a.name, a.genre, a.color, a.image_url, a.spotify_url, a.deezer_id, null, null
-      from swipes s join users u on u.id = s.user_id join artists a on a.id = s.artist_id
-      where s.liked and s.user_id in (select id from circle)
-      union all
-      select 'checkin', c.created_at, u.id, u.name, u.color, a.id, a.name, a.genre, a.color, a.image_url, a.spotify_url, a.deezer_id, null, v.name
-      from checkins c join users u on u.id = c.user_id join gigs g on g.id = c.gig_id
-      join artists a on a.id = g.artist_id join venues v on v.id = g.venue_id
-      where c.user_id in (select id from circle)
-    ) feed order by at desc limit 50`, [c.get('user').id]));
+    select p.*, ${POST_EXTRAS} from (${ALL_POSTS}) p order by p.at desc limit 60`, [c.get('user').id]));
+});
+
+// People you don't follow yet, most active first.
+app.get('/people/suggested', auth, async (c) => {
+  const db = await getDb();
+  return c.json(await db.query<Person & { posts: number; mutual: number }>(`
+    select u.id, u.name, u.handle, u.color, u.tags, false following,
+      ((select count(*) from recommendations r where r.user_id = u.id) + (select count(*) from swipes s where s.user_id = u.id and s.liked)
+        + (select count(*) from checkins ch where ch.user_id = u.id))::int posts,
+      (select count(*)::int from follows f1 join follows f2 on f2.follower_id = f1.followee_id
+        where f1.follower_id = $1 and f2.followee_id = u.id) mutual
+    from users u
+    where u.id <> $1 and not exists(select 1 from follows f where f.follower_id = $1 and f.followee_id = u.id)
+    order by mutual desc, posts desc, u.name limit 12`, [c.get('user').id]));
+});
+
+const POST_KEY_RE = /^(rec:\d+|save:\d+:\d+|checkin:\d+:\d+)$/;
+async function checkPost(key: string) {
+  if (!POST_KEY_RE.test(key)) fail(400, 'Unknown post.');
+  const [kind, a, b] = key.split(':').map((s, i) => (i ? Number(s) : s)) as [string, number, number];
+  const db = await getDb();
+  const sql = kind === 'rec' ? 'select 1 from recommendations where id = $1'
+    : kind === 'save' ? 'select 1 from swipes where user_id = $1 and artist_id = $2 and liked'
+    : 'select 1 from checkins where user_id = $1 and gig_id = $2';
+  const rows = await db.query(sql, kind === 'rec' ? [a] : [a, b]);
+  if (!rows.length) fail(404, 'That post is gone.');
+}
+
+const likeCount = async (key: string) => {
+  const db = await getDb();
+  return (await db.query<{ n: number }>('select count(*)::int n from post_likes where post_key = $1', [key]))[0].n;
+};
+
+app.post('/posts/:key/like', auth, async (c) => {
+  const key = c.req.param('key') ?? '';
+  await checkPost(key);
+  const db = await getDb();
+  await db.query('insert into post_likes (post_key, user_id) values ($1, $2) on conflict do nothing', [key, c.get('user').id]);
+  return c.json({ liked: true, likes: await likeCount(key) });
+});
+
+app.delete('/posts/:key/like', auth, async (c) => {
+  const key = c.req.param('key') ?? '';
+  const db = await getDb();
+  await db.query('delete from post_likes where post_key = $1 and user_id = $2', [key, c.get('user').id]);
+  return c.json({ liked: false, likes: await likeCount(key) });
+});
+
+app.get('/posts/:key/comments', auth, async (c) => {
+  const key = c.req.param('key') ?? '';
+  if (!POST_KEY_RE.test(key)) fail(400, 'Unknown post.');
+  const db = await getDb();
+  return c.json(await db.query<PostComment>(`
+    select pc.id, pc.body, pc.created_at, u.id user_id, u.name "user", u.handle
+    from post_comments pc join users u on u.id = pc.user_id where pc.post_key = $1 order by pc.created_at`, [key]));
+});
+
+app.post('/posts/:key/comments', auth, async (c) => {
+  const key = c.req.param('key') ?? '';
+  const body = String((await c.req.json<{ body?: string }>()).body ?? '').trim();
+  if (!body) fail(400, 'Write something first.');
+  if (body.length > 300) fail(400, 'Keep comments under 300 characters.');
+  await checkPost(key);
+  const db = await getDb();
+  const user = c.get('user');
+  const [row] = await db.query<PostComment>(`insert into post_comments (post_key, user_id, body) values ($1, $2, $3)
+    returning id, body, created_at, user_id`, [key, user.id, body]);
+  return c.json({ ...row, user: user.name, handle: user.handle });
 });
 
 app.post('/recommendations', auth, async (c) => {

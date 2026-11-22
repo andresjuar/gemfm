@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { Me } from '../shared/types';
-import { api, session } from './api';
+import { ApiError, api } from './api';
 import { Avatar } from './components/Avatar';
+import { Logo } from './components/Logo';
 import { TagPicker } from './components/TagPicker';
 import { Discover } from './screens/Discover';
 import { Friends } from './screens/Friends';
 import { Live } from './screens/Live';
-import { PickUser } from './screens/PickUser';
+import { Login } from './screens/Login';
 import { Profile } from './screens/Profile';
 import { useUi } from './ui';
 
@@ -21,13 +22,16 @@ export interface AppActions {
   me: Me;
   refreshMe: () => Promise<void>;
   showProfile: (userId: number) => void;
-  switchUser: () => void;
+  logOut: () => void;
   editTastes: () => void;
 }
 
+type Status = 'loading' | 'signed-out' | 'signed-in' | 'offline';
+
 export function App() {
-  const { openSheet, closeSheet } = useUi();
+  const { openSheet, closeSheet, toast } = useUi();
   const [me, setMe] = useState<Me | null>(null);
+  const [status, setStatus] = useState<Status>('loading');
   const [tab, setTab] = useState<Tab>('discover');
   const [profileId, setProfileId] = useState<number | null>(null);
   // Bumped when the user or their tastes change so every screen reloads its data.
@@ -48,33 +52,28 @@ export function App() {
     openSheet(<TagPicker initial={current.tags} onboarding={onboarding} onSaved={tastesSaved} />, { dismissible: !onboarding });
   }, [openSheet, tastesSaved]);
 
-  // First time a listener signs in, ask what they like before showing artists.
-  const signedIn = useCallback((current: Me) => {
+  // After signing in: ask new listeners what they like before showing artists.
+  const enter = useCallback((current: Me) => {
+    setStatus('signed-in');
+    setTab('discover');
+    setProfileId(null);
+    setGeneration((g) => g + 1);
     if (!current.tags.length) editTastes(current, true);
   }, [editTastes]);
 
-  const switchUser = useCallback(() => {
-    openSheet(
-      <PickUser
-        onPick={async (id) => {
-          session.setUser(id);
-          closeSheet();
-          const current = await refreshMe();
-          setGeneration((g) => g + 1);
-          setTab('discover');
-          signedIn(current);
-        }}
-      />,
-    );
-  }, [openSheet, closeSheet, refreshMe, signedIn]);
-
   useEffect(() => {
-    if (!session.userId) return switchUser();
-    refreshMe().then(signedIn).catch(() => {
-      session.setUser(null);
-      switchUser();
+    refreshMe().then(enter).catch((err) => {
+      setStatus(err instanceof ApiError && err.status === 401 ? 'signed-out' : 'offline');
     });
-  }, [refreshMe, switchUser, signedIn]);
+  }, [refreshMe, enter]);
+
+  const logOut = useCallback(async () => {
+    await api('/auth/logout', 'POST').catch(() => {});
+    closeSheet();
+    setMe(null);
+    setStatus('signed-out');
+    toast('Signed out');
+  }, [closeSheet, toast]);
 
   const go = (next: Tab, userId: number | null = null) => {
     setTab(next);
@@ -82,31 +81,47 @@ export function App() {
     window.scrollTo(0, 0);
   };
 
-  const actions: AppActions | null = me && {
+  if (status === 'loading') {
+    return <div className="splash" aria-busy="true"><Logo size={40} /></div>;
+  }
+  if (status === 'offline') {
+    return (
+      <div className="splash">
+        <Logo size={40} />
+        <p className="muted">Can’t reach gem.fm right now.</p>
+        <button className="btn" onClick={() => window.location.reload()}>Try again</button>
+      </div>
+    );
+  }
+  if (status === 'signed-out' || !me) {
+    return <Login onSignedIn={async () => enter(await refreshMe())} />;
+  }
+
+  const actions: AppActions = {
     me,
     refreshMe: async () => { await refreshMe(); },
     showProfile: (id) => go('profile', id),
-    switchUser,
+    logOut,
     editTastes: () => editTastes(me),
   };
 
   return (
     <div className="app">
       <header className="top">
-        <div className="brand">gem<span>.</span>fm</div>
+        <button className="brand-btn" aria-label="gem.fm home" onClick={() => go('discover')}><Logo size={24} /></button>
         <div className="top-right">
-          <span className="points" aria-label="Your points">{me ? me.stats.points : 0} pts</span>
-          <button className="avatar-btn" aria-label="My profile" onClick={() => (me ? go('profile', me.id) : switchUser())}>
-            {me ? <Avatar name={me.name} color={me.color} /> : <span className="avatar" />}
+          <span className="points" aria-label="Your points">{me.stats.points} pts</span>
+          <button className="avatar-btn" aria-label="My profile" onClick={() => go('profile', me.id)}>
+            <Avatar name={me.name} color={me.color} />
           </button>
         </div>
       </header>
 
-      <main className="view" key={`${generation}-${tab}-${profileId ?? ''}`}>
-        {actions && tab === 'discover' && <Discover {...actions} />}
-        {actions && tab === 'live' && <Live {...actions} />}
-        {actions && tab === 'friends' && <Friends {...actions} />}
-        {actions && tab === 'profile' && <Profile {...actions} userId={profileId ?? actions.me.id} />}
+      <main className={`view ${tab === 'friends' ? 'view-feed' : ''}`} key={`${generation}-${tab}-${profileId ?? ''}`}>
+        {tab === 'discover' && <Discover {...actions} />}
+        {tab === 'live' && <Live {...actions} />}
+        {tab === 'friends' && <Friends {...actions} />}
+        {tab === 'profile' && <Profile {...actions} userId={profileId ?? me.id} />}
       </main>
 
       <nav className="tabs" aria-label="Main">

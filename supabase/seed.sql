@@ -3,7 +3,7 @@
 -- Gig dates are relative to today (Guadalajara time), so re-run it before a
 -- presentation to get fresh upcoming gigs.
 
-truncate recommendations, follows, checkins, swipes, gigs, venues, artists, users restart identity cascade;
+truncate post_comments, post_likes, sessions, recommendations, follows, checkins, swipes, gigs, venues, artists, users restart identity cascade;
 
 insert into users (id, name, handle, color) overriding system value values
   (1, 'Andrés',  'andres',  '#F29AD3'),
@@ -65,6 +65,16 @@ insert into recommendations (user_id, artist_id, note, created_at) values
 
 insert into checkins (user_id, gig_id, created_at) values
   (3, 1, now() - interval '10 minutes');
+
+-- Likes and comments on those posts.
+insert into post_likes (post_key, user_id) values
+  ('rec:1', 1), ('rec:1', 4), ('rec:1', 5), ('rec:2', 2), ('rec:3', 1), ('rec:3', 2), ('checkin:3:1', 2), ('save:2:6', 3);
+
+insert into post_comments (post_key, user_id, body, created_at) values
+  ('rec:1', 4, 'Added to my study playlist 🎧', now() - interval '40 minutes'),
+  ('rec:1', 5, 'Same, this is so good', now() - interval '25 minutes'),
+  ('rec:2', 1, 'Need to see them live', now() - interval '3 hours'),
+  ('checkin:3:1', 2, 'Wait, you went without me??', now() - interval '5 minutes');
 
 -- Keep the id sequences ahead of the explicit ids above.
 select setval(pg_get_serial_sequence('users', 'id'),   (select max(id) from users));

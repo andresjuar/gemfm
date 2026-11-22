@@ -7,7 +7,7 @@ import { useTagLabels } from '../lib/useTagLabels';
 import { ago } from '../lib/format';
 import { useLoad } from '../lib/useLoad';
 
-export function Profile({ me, userId, switchUser, editTastes }: AppActions & { userId: number }) {
+export function Profile({ me, userId, logOut, editTastes }: AppActions & { userId: number }) {
   const { data: p, error, reload } = useLoad(() => api<ProfileData>('/users/' + userId), [userId]);
   const labels = useTagLabels();
   if (error) return <div className="panel empty">{error}</div>;
@@ -25,7 +25,7 @@ export function Profile({ me, userId, switchUser, editTastes }: AppActions & { u
         <Avatar name={p.name} color={p.color} size={64} />
         <div className="grow"><h2>{p.name}</h2><span className="muted">@{p.handle}</span></div>
         {mine
-          ? <button className="btn small" onClick={switchUser}>Switch user</button>
+          ? <button className="btn small" onClick={logOut}>Sign out</button>
           : <button className={`btn small ${p.isFollowing ? '' : 'primary'}`} onClick={toggleFollow}>{p.isFollowing ? 'Following' : 'Follow'}</button>}
       </div>
       <div className="panel stats">

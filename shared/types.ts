@@ -121,21 +121,48 @@ export interface Person extends User {
   following: boolean;
 }
 
+export interface PostComment {
+  id: number;
+  body: string;
+  created_at: string;
+  user_id: number;
+  user: string;
+  handle: string;
+}
+
 export interface FeedItem {
+  /** 'rec:<id>', 'save:<user>:<artist>' or 'checkin:<user>:<gig>' */
+  key: string;
   type: 'rec' | 'save' | 'checkin';
   at: string;
   user_id: number;
   user: string;
+  handle: string;
   user_color: string;
   artist_id: number;
   artist: string;
   genre: string;
+  city: string;
   color: string;
   image_url: string;
   spotify_url: string;
   deezer_id: number | null;
   note: string | null;
   venue: string | null;
+  likes: number;
+  liked: boolean;
+  comment_count: number;
+  /** The latest two comments, oldest first. */
+  comments: PostComment[];
+  /** Posted by you or someone you follow. */
+  following: boolean;
+  /** You saved this artist. */
+  saved: boolean;
+}
+
+export interface SuggestedPerson extends Person {
+  posts: number;
+  mutual: number;
 }
 
 export interface Venue {

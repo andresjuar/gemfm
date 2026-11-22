@@ -4,6 +4,7 @@ import { useState, type FormEvent } from 'react';
 import type { Artist, RadarResult, Venue } from '../../shared/types';
 import { api, session } from '../api';
 import { ArtistImage } from '../components/ArtistImage';
+import { Logo } from '../components/Logo';
 import { Player } from '../components/Player';
 import { compact, plural } from '../lib/format';
 import { useLoad } from '../lib/useLoad';
@@ -30,7 +31,7 @@ export function ArtistsPage() {
   return (
     <div className="app wide-bottom">
       <header className="top">
-        <div className="brand">gem<span>.</span>fm <span className="small muted brand-sub">for artists</span></div>
+        <div className="row"><Logo size={22} /><span className="small muted brand-sub">for artists</span></div>
         <a className="btn small" href="/">Back to app</a>
       </header>
       <main className="view">

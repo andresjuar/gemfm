@@ -74,7 +74,7 @@ const records = lines.map((cells) => {
 const db = await getDb();
 console.log(`Importing ${records.length} artists into ${db.kind === 'pglite' ? 'local PGlite (.pglite/)' : 'DATABASE_URL (Supabase)'}…`);
 if (args.includes('--replace')) {
-  await db.exec('truncate artists restart identity cascade');
+  await db.exec('truncate artists restart identity cascade; truncate post_likes, post_comments');
   console.log('Removed existing artists.');
 }
 
@@ -154,14 +154,30 @@ if (args.includes('--demo-activity') && imported.length >= 6) {
     [3, a[1], 'Saw them live, they are LOUD.', '4 hours'],
     [4, a[5], 'On repeat all week. Go listen now.', '20 minutes'],
   ];
+  const recIds: number[] = [];
   for (const [u, artist, note, ago] of recs) {
-    await db.query('insert into recommendations (user_id, artist_id, note, created_at) values ($1, $2, $3, now() - $4::interval)',
-      [u, artist, note, ago]);
+    const [row] = await db.query<{ id: number }>(`insert into recommendations (user_id, artist_id, note, created_at)
+      values ($1, $2, $3, now() - $4::interval) returning id`, [u, artist, note, ago]);
+    recIds.push(row.id);
+  }
+  // Likes and comments on those recommendations.
+  const likes: [number, number][] = [[0, 1], [0, 4], [0, 5], [1, 2], [2, 1], [2, 2], [2, 3]];
+  for (const [r, u] of likes) {
+    await db.query('insert into post_likes (post_key, user_id) values ($1, $2) on conflict do nothing', [`rec:${recIds[r]}`, u]);
+  }
+  const comments: [number, number, string, string][] = [
+    [0, 4, 'Added to my study playlist 🎧', '40 minutes'],
+    [0, 5, 'Same, this is so good', '25 minutes'],
+    [1, 1, 'Need to see them live', '3 hours'],
+  ];
+  for (const [r, u, body, ago] of comments) {
+    await db.query('insert into post_comments (post_key, user_id, body, created_at) values ($1, $2, $3, now() - $4::interval)',
+      [`rec:${recIds[r]}`, u, body, ago]);
   }
   const [tonight] = await db.query<{ id: number }>('select id from gigs where artist_id = $1 order by starts_at limit 1', [a[0]]);
   if (tonight) await db.query(`insert into checkins (user_id, gig_id, created_at) values (3, $1, now() - interval '10 minutes')
     on conflict do nothing`, [tonight.id]);
-  console.log('Added demo friend activity (saves, recommendations, a check-in).');
+  console.log('Added demo friend activity (saves, recommendations, likes, comments, a check-in).');
 }
 
 console.log('Done.');
