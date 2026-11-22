@@ -7,7 +7,10 @@ De la primera escucha a la primera fila: descubre artistas emergentes, ve a sus 
 - **Live**: tocadas en Guadalajara. Hacer check-in te da un sello de *early fan* con tu número de fan.
 - **Cuentas**: registro e inicio de sesión con correo o usuario y contraseña. Los botones de Spotify, Apple Music y Deezer aparecen como *Soon*.
 - **Friends**: feed estilo Instagram con publicaciones altas (foto del artista), likes (también con doble toque), comentarios, guardar al artista, escucharlo y seguir a gente desde el feed o desde *Suggested for you*.
-- **/artists**: lado del artista: agregar artistas, tocadas, links de Spotify y revisar lo que encontró el **radar de artistas emergentes**.
+- **/admin**: administración: agregar artistas, tocadas y venues, revisar el **radar de artistas emergentes**, patrocinios y las solicitudes que llegan de las landings.
+- **/artist** y **/venues**: landings para artistas (promoción) y venues (aparecer en Live), con formulario. Las solicitudes se guardan y se ven en `/admin`.
+- **Venues patrocinados**: su noche aparece hasta arriba de Live como *Featured night*, siempre con la etiqueta **Sponsored** (dorada).
+- **Menú oculto**: toca el logo 5 veces seguidas (o mantenlo presionado) para abrir *gem.fm for business* con links a `/artist`, `/venues` y `/admin`. No hay otros links a esas páginas.
 
 ## Stack
 
@@ -75,7 +78,7 @@ Para agregar o ajustar etiquetas, edita el `insert into tags` de `schema.sql` y 
 
 ## Género, procedencia e idioma automáticos
 
-Cuando un artista entra sin estos datos (radar, alta en `/artists` o importación), gem.fm los busca solo:
+Cuando un artista entra sin estos datos (radar, alta en `/admin` o importación), gem.fm los busca solo:
 
 | Dato | De dónde sale | Qué tan confiable |
 |---|---|---|
@@ -83,7 +86,7 @@ Cuando un artista entra sin estos datos (radar, alta en `/artists` o importació
 | **Idioma** | Palabras de los títulos de sus canciones y álbumes (Spanish, English, Portuguese, French). Si no es claro, lo deja vacío | Buena; falla con artistas de 1–2 canciones con títulos cortos |
 | **Procedencia** | MusicBrainz (ciudad donde empezó o país). Solo si hay un único artista con ese nombre | Baja para artistas pequeños; a veces el servicio está saturado |
 
-En `/artists`:
+En `/admin`:
 - **Auto-fill** en cada artista llena lo que falte (no borra lo que escribiste).
 - **Auto-fill all** lo hace para todos los pendientes o aprobados, de 5 en 5 (MusicBrainz permite una consulta por segundo).
 - En *Join as an artist* basta con el nombre (mejor si pegas el link de Spotify de una canción): género, idioma, foto y preview se llenan solos.
@@ -100,7 +103,7 @@ Se buscan solas, sin llaves de API:
 2. **Deezer**: si el nombre coincide exactamente.
 3. Link de canción o álbum de Spotify: la portada.
 
-En `/artists` puedes pegar el link de Spotify, pegar el link de una imagen a mano (sección *Photo*), buscar la foto de un artista o usar **Find photos** para todos los que no tienen.
+En `/admin` puedes pegar el link de Spotify, pegar el link de una imagen a mano (sección *Photo*), buscar la foto de un artista o usar **Find photos** para todos los que no tienen.
 
 ## Importar artistas reales
 
@@ -132,7 +135,7 @@ npm run import:artists -- data/artists.csv --replace --demo-gigs --demo-activity
 2. En Netlify: **Add new project › Import an existing project** › elige el repo. La configuración ya está en `netlify.toml` (build `npm run build`, publica `dist/`, funciones en `netlify/functions/`).
 3. **Project configuration › Environment variables**:
    - `DATABASE_URL`: la URL del Transaction pooler de Supabase.
-   - `ADMIN_KEY`: una contraseña cualquiera para la página `/artists` (escríbela ahí en el campo *Admin key*).
+   - `ADMIN_KEY`: una contraseña cualquiera para la página `/admin` (escríbela ahí en el campo *Admin key*).
 4. Deploy. La API queda en `https://tu-sitio.netlify.app/api/...` y el radar corre solo cada lunes.
 
 ## API
@@ -185,3 +188,11 @@ Las contraseñas se guardan con scrypt (nunca en texto) y la sesión dura 30 dí
 ## Todavía no está en el MVP
 
 Login con Spotify / Apple Music / Deezer (ver `docs/investigacion.md`), recuperar contraseña y verificar correo, límite de intentos de login, check-ins verificados, venta de boletos, panel para venues, ranking más fino (hoy Discover prioriza por etiquetas coincidentes y luego es aleatorio).
+
+## Para negocios (artistas y venues)
+
+- **`/artist`**: landing para artistas emergentes. Explica cómo funciona gem.fm para ellos (Discover → saves → gigs → early-fan stamps), la promoción *siempre etiquetada* y tiene un formulario de solicitud.
+- **`/venues`**: landing para bares, foros y cafés: por qué unirse, cómo funciona, planes (Listing gratis, Sponsored nights, Ticketing próximamente) y formulario para inscribir su venue.
+- Los formularios guardan la solicitud en la tabla `applications`; se ven en `/admin › Applications`, donde puedes marcarlas como contactadas o archivarlas.
+- **Venues patrocinados**: en `/admin › Venues and sponsorship` activas *Make sponsored* y escribes el beneficio (p. ej. "2x1 drinks when you show your early-fan stamp"). Su próxima noche aparece hasta arriba de Live como *Featured night* con la etiqueta dorada **Sponsored**, también en *From my saves*. El demo trae uno ficticio: **El Sótano Sonoro**.
+- Las tres páginas solo se abren desde el **menú oculto** (5 toques al logo o mantenerlo presionado, en la app o en la pantalla de login) o escribiendo la URL.

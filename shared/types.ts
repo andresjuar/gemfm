@@ -102,6 +102,8 @@ export interface Gig {
   checked_in: boolean;
   attendees: number;
   friends_there: string | null;
+  sponsored: boolean;
+  tagline: string;
 }
 
 export interface Stamp {
@@ -171,6 +173,19 @@ export interface Venue {
   id: number;
   name: string;
   area: string;
+  /** Pays to feature its nights in Live; always shown as "Sponsored". */
+  sponsored: boolean;
+  tagline: string;
+}
+
+export interface Application {
+  id: number;
+  kind: 'artist' | 'venue';
+  name: string;
+  email: string;
+  details: Record<string, string | string[]>;
+  status: 'new' | 'contacted' | 'archived';
+  created_at: string;
 }
 
 export interface Preview {

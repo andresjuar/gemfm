@@ -3,7 +3,7 @@
 import { Hono, type Context, type Next } from 'hono';
 import { deleteCookie, getCookie, setCookie } from 'hono/cookie';
 import type {
-  Artist, DiscoverArtist, FeedItem, Gig, Person, PostComment, Preview, Stamp, Stats, Tag, User, Venue,
+  Application, Artist, DiscoverArtist, FeedItem, Gig, Person, PostComment, Preview, Stamp, Stats, Tag, User, Venue,
 } from '../shared/types';
 import { getDb } from './db';
 import {
@@ -293,6 +293,7 @@ app.get('/gigs', auth, async (c) => {
   return c.json(await db.query<Gig>(`
     select * from (
       select g.*, a.name artist, a.genre, a.color, a.image_url, a.spotify_url, v.name venue, v.area,
+        v.sponsored, v.tagline,
         exists(select 1 from swipes s where s.user_id = $1 and s.artist_id = a.id and s.liked) saved,
         exists(select 1 from checkins c where c.user_id = $1 and c.gig_id = g.id) checked_in,
         (select count(*)::int from checkins c where c.gig_id = g.id) attendees,
@@ -300,7 +301,7 @@ app.get('/gigs', auth, async (c) => {
           join follows f on f.followee_id = u.id and f.follower_id = $1 where c.gig_id = g.id) friends_there
       from gigs g join artists a on a.id = g.artist_id join venues v on v.id = g.venue_id
       where ${UPCOMING} and a.status = 'approved'
-    ) x ${onlySaved ? 'where saved' : ''}
+    ) x ${onlySaved ? 'where saved or sponsored' : ''}
     order by starts_at`, [c.get('user').id]));
 });
 
@@ -581,11 +582,59 @@ app.get('/venues', async (c) => {
 });
 
 app.post('/venues', admin, async (c) => {
-  const { name, area } = await c.req.json<{ name?: string; area?: string }>();
+  const { name, area, sponsored, tagline } = await c.req.json<{ name?: string; area?: string; sponsored?: boolean; tagline?: string }>();
   if (!name?.trim()) fail(400, 'Venue name is required.');
   const db = await getDb();
-  const [row] = await db.query<{ id: number }>('insert into venues (name, area) values ($1, $2) returning id', [name!.trim(), area?.trim() || '']);
+  const [row] = await db.query<{ id: number }>('insert into venues (name, area, sponsored, tagline) values ($1, $2, $3, $4) returning id',
+    [name!.trim(), area?.trim() || '', !!sponsored, (tagline ?? '').trim().slice(0, 120)]);
   return c.json({ id: row.id });
+});
+
+// Turn sponsorship on/off and set the line shown on its featured nights.
+app.patch('/venues/:id', admin, async (c) => {
+  const b = await c.req.json<{ sponsored?: boolean; tagline?: string }>();
+  const db = await getDb();
+  const rows = await db.query('update venues set sponsored = coalesce($2, sponsored), tagline = coalesce($3, tagline) where id = $1 returning id',
+    [toId(c.req.param('id')), b.sponsored ?? null, b.tagline === undefined ? null : b.tagline.trim().slice(0, 120)]);
+  if (!rows.length) fail(404, 'Venue not found.');
+  return c.json({ ok: true });
+});
+
+// ---------- Applications from /artist and /venues ----------
+const APP_FIELDS: Record<'artist' | 'venue', string[]> = {
+  artist: ['project', 'genre', 'city', 'spotify', 'instagram', 'goals', 'message'],
+  venue: ['venue', 'area', 'address', 'capacity', 'type', 'phone', 'instagram', 'goals', 'message'],
+};
+
+app.post('/applications', async (c) => {
+  const b = await c.req.json<Record<string, unknown>>().catch(() => ({} as Record<string, unknown>));
+  const kind = b.kind === 'venue' ? 'venue' : b.kind === 'artist' ? 'artist' : fail(400, 'Unknown form.');
+  const name = String(b.name ?? '').trim().slice(0, 80);
+  const email = String(b.email ?? '').trim().toLowerCase().slice(0, 120);
+  if (name.length < 2) fail(400, 'Tell us your name.');
+  if (!EMAIL_RE.test(email)) fail(400, 'Enter a valid email so we can reach you.');
+  const details: Record<string, unknown> = {};
+  for (const k of APP_FIELDS[kind]) {
+    const v = b[k];
+    if (Array.isArray(v)) details[k] = v.map((x) => String(x).slice(0, 60)).slice(0, 10);
+    else if (v !== undefined && v !== null && String(v).trim()) details[k] = String(v).trim().slice(0, 600);
+  }
+  const db = await getDb();
+  await db.query('insert into applications (kind, name, email, details) values ($1, $2, $3, $4::jsonb)', [kind, name, email, JSON.stringify(details)]);
+  return c.json({ ok: true });
+});
+
+app.get('/applications', admin, async (c) => {
+  const db = await getDb();
+  return c.json(await db.query<Application>("select * from applications where status <> 'archived' order by created_at desc limit 100"));
+});
+
+app.patch('/applications/:id', admin, async (c) => {
+  const { status } = await c.req.json<{ status?: string }>();
+  if (!['new', 'contacted', 'archived'].includes(status ?? '')) fail(400, 'Unknown status.');
+  const db = await getDb();
+  await db.query('update applications set status = $2 where id = $1', [toId(c.req.param('id')), status]);
+  return c.json({ ok: true });
 });
 
 app.post('/gigs', admin, async (c) => {

@@ -3,6 +3,7 @@ import type { Me } from '../shared/types';
 import { ApiError, api } from './api';
 import { Avatar } from './components/Avatar';
 import { Logo } from './components/Logo';
+import { useSecretMenu } from './components/SecretMenu';
 import { TagPicker } from './components/TagPicker';
 import { Discover } from './screens/Discover';
 import { Friends } from './screens/Friends';
@@ -81,6 +82,9 @@ export function App() {
     window.scrollTo(0, 0);
   };
 
+  // Tap the logo 5 times (or hold it) to open the hidden business menu.
+  const secret = useSecretMenu(() => go('discover'));
+
   if (status === 'loading') {
     return <div className="splash" aria-busy="true"><Logo size={40} /></div>;
   }
@@ -108,7 +112,7 @@ export function App() {
   return (
     <div className="app">
       <header className="top">
-        <button className="brand-btn" aria-label="gem.fm home" onClick={() => go('discover')}><Logo size={24} /></button>
+        <button className="brand-btn" aria-label="gem.fm home" {...secret}><Logo size={24} /></button>
         <div className="top-right">
           <span className="points" aria-label="Your points">{me.stats.points} pts</span>
           <button className="avatar-btn" aria-label="My profile" onClick={() => go('profile', me.id)}>

@@ -3,7 +3,7 @@
 -- Gig dates are relative to today (Guadalajara time), so re-run it before a
 -- presentation to get fresh upcoming gigs.
 
-truncate post_comments, post_likes, sessions, recommendations, follows, checkins, swipes, gigs, venues, artists, users restart identity cascade;
+truncate applications, post_comments, post_likes, sessions, recommendations, follows, checkins, swipes, gigs, venues, artists, users restart identity cascade;
 
 insert into users (id, name, handle, color) overriding system value values
   (1, 'Andrés',  'andres',  '#F29AD3'),
@@ -33,6 +33,10 @@ insert into venues (id, name, area) overriding system value values
   (3, 'C3 Stage',           'Zapopan'),
   (4, 'Casa Loma Café',     'Providencia');
 
+-- A sponsored venue (fictional): its nights are featured in Live, always labelled "Sponsored".
+insert into venues (id, name, area, sponsored, tagline) overriding system value values
+  (5, 'El Sótano Sonoro', 'Americana', true, '2x1 drinks when you show your early-fan stamp');
+
 -- (artist, venue, days from today, hour, price)
 insert into gigs (artist_id, venue_id, starts_at, price_mxn)
 select a, v, (date_trunc('day', now() at time zone 'America/Mexico_City') + make_interval(days => d, hours => h))
@@ -41,7 +45,8 @@ from (values
   (1, 4, 0, 21, 0),   (2, 1, 1, 22, 150), (3, 2, 2, 21, 120),
   (4, 3, 3, 20, 200), (5, 4, 4, 19, 0),   (6, 2, 5, 22, 100),
   (7, 1, 6, 21, 150), (8, 3, 8, 21, 180), (9, 2, 10, 22, 120),
-  (10, 4, 12, 20, 80)
+  (10, 4, 12, 20, 80),
+  (3, 5, 1, 21, 100), (7, 5, 3, 22, 0)
 ) as t(a, v, d, h, p);
 
 -- Social graph and activity so the Friends tab isn't empty.

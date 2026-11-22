@@ -3,6 +3,7 @@ import { useState, type FormEvent, type ReactNode } from 'react';
 import type { User } from '../../shared/types';
 import { api } from '../api';
 import { Logo } from '../components/Logo';
+import { useSecretMenu } from '../components/SecretMenu';
 
 type Mode = 'login' | 'signup';
 
@@ -11,6 +12,7 @@ export function Login({ onSignedIn }: { onSignedIn: (user: User) => void }) {
   const [f, setF] = useState({ name: '', handle: '', email: '', login: '', password: '' });
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const secret = useSecretMenu();
   const set = (k: keyof typeof f) => (e: { target: { value: string } }) => setF({ ...f, [k]: e.target.value });
 
   const submit = async (e: FormEvent) => {
@@ -35,7 +37,7 @@ export function Login({ onSignedIn }: { onSignedIn: (user: User) => void }) {
   return (
     <div className="auth">
       <div className="auth-hero">
-        <Logo size={44} />
+        <button type="button" className="brand-btn" aria-label="gem.fm" {...secret}><Logo size={44} /></button>
         <p className="auth-tagline">From first listen to front row.</p>
       </div>
 

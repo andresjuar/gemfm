@@ -1,16 +1,16 @@
-// Artist side: add artists and gigs, paste Spotify links, and review what the
-// emerging-artist radar found.
+// Admin (/admin): add artists, gigs and venues, review the emerging-artist
+// radar, sponsorships and applications from /artist and /venues.
 import { useState, type FormEvent } from 'react';
-import type { Artist, RadarResult, Venue } from '../../shared/types';
+import type { Application, Artist, RadarResult, Venue } from '../../shared/types';
 import { api, session } from '../api';
 import { ArtistImage } from '../components/ArtistImage';
 import { Logo } from '../components/Logo';
 import { Player } from '../components/Player';
-import { compact, plural } from '../lib/format';
+import { ago, compact, plural } from '../lib/format';
 import { useLoad } from '../lib/useLoad';
 import { useUi } from '../ui';
 
-export function ArtistsPage() {
+export function AdminPage() {
   const { toast } = useUi();
   const approved = useLoad(() => api<Artist[]>('/artists'));
   const pending = useLoad(() => api<Artist[]>('/artists?status=pending'));
@@ -31,11 +31,12 @@ export function ArtistsPage() {
   return (
     <div className="app wide-bottom">
       <header className="top">
-        <div className="row"><Logo size={22} /><span className="small muted brand-sub">for artists</span></div>
+        <div className="row"><Logo size={22} /><span className="small muted brand-sub">admin</span></div>
         <a className="btn small" href="/">Back to app</a>
       </header>
       <main className="view">
         <AdminKey />
+        <Applications run={run} />
         <Radar onDone={pending.reload} />
 
         <section className="stack">
@@ -62,6 +63,7 @@ export function ArtistsPage() {
 
         <NewArtist onDone={reloadAll} run={run} />
         <NewGig artists={approved.data ?? []} venues={venues.data ?? []} run={run} onNewVenue={venues.reload} />
+        <Venues venues={venues.data ?? []} run={run} onChange={venues.reload} />
 
         <section className="stack">
           <span className="eyebrow">Artists, Spotify links, details and photos</span>
@@ -397,6 +399,84 @@ function MissingPhotos({ artists, run, onDone }: { artists: Artist[]; run: Run; 
     <div className="panel row between">
       <span className="small">{plural(missing, 'artist')} without a photo</span>
       <button type="button" className="btn small primary" onClick={fill} disabled={busy}>{busy ? 'Looking…' : 'Find photos'}</button>
+    </div>
+  );
+}
+
+// ---------- Applications from /artist and /venues ----------
+const FIELD_LABELS: Record<string, string> = {
+  project: 'Project', venue: 'Venue', genre: 'Genre', city: 'City', area: 'Area', address: 'Address', capacity: 'Capacity',
+  type: 'Type', phone: 'Phone', spotify: 'Spotify', instagram: 'Instagram', goals: 'Interested in', message: 'Message',
+};
+
+function Applications({ run }: { run: Run }) {
+  const apps = useLoad(() => api<Application[]>('/applications'));
+  const setStatus = async (a: Application, status: Application['status']) => {
+    if (await run(() => api(`/applications/${a.id}`, 'PATCH', { status }), status === 'archived' ? 'Archived' : 'Marked as contacted')) apps.reload();
+  };
+  return (
+    <section className="stack">
+      <div className="row between">
+        <span className="eyebrow">Applications</span>
+        <span className="small muted">{apps.data ? `${apps.data.filter((a) => a.status === 'new').length} new` : ''}</span>
+      </div>
+      <p className="small muted m0">Sent from <a href="/artist">/artist</a> and <a href="/venues">/venues</a>.</p>
+      {apps.error && <p className="error">{apps.error}</p>}
+      {apps.data?.length === 0 && <p className="small muted m0">No applications yet.</p>}
+      {apps.data?.map((a) => (
+        <article key={a.id} className={`panel stack app-card ${a.status}`}>
+          <div className="row between">
+            <span className={`chip ${a.kind === 'venue' ? 'sponsor' : 'hot'}`}>{a.kind === 'venue' ? 'Venue' : 'Artist'}</span>
+            <span className="small muted">{ago(a.created_at)}{a.status === 'contacted' ? ' · contacted' : ''}</span>
+          </div>
+          <div>
+            <b>{String(a.details.project ?? a.details.venue ?? a.name)}</b>
+            <div className="small muted">{a.name} · <a href={`mailto:${a.email}`}>{a.email}</a></div>
+          </div>
+          <dl className="app-details">
+            {Object.entries(a.details).filter(([k]) => k !== 'project' && k !== 'venue').map(([k, v]) => (
+              <div key={k}><dt>{FIELD_LABELS[k] ?? k}</dt><dd>{Array.isArray(v) ? v.join(', ') : v}</dd></div>
+            ))}
+          </dl>
+          <div className="row">
+            {a.status === 'new' && <button className="btn small grow" onClick={() => setStatus(a, 'contacted')}>Mark contacted</button>}
+            <button className="btn small grow" onClick={() => setStatus(a, 'archived')}>Archive</button>
+          </div>
+        </article>
+      ))}
+    </section>
+  );
+}
+
+// ---------- Venues and sponsorship ----------
+function Venues({ venues, run, onChange }: { venues: Venue[]; run: Run; onChange: () => void }) {
+  return (
+    <section className="stack">
+      <span className="eyebrow">Venues and sponsorship</span>
+      <p className="small muted m0">Sponsored venues get a featured night at the top of Live, always labelled “Sponsored”.</p>
+      {venues.map((v) => <VenueRow key={`${v.id}-${v.sponsored}-${v.tagline}`} venue={v} run={run} onChange={onChange} />)}
+    </section>
+  );
+}
+
+function VenueRow({ venue: v, run, onChange }: { venue: Venue; run: Run; onChange: () => void }) {
+  const [tagline, setTagline] = useState(v.tagline);
+  const save = async (sponsored: boolean) => {
+    if (await run(() => api(`/venues/${v.id}`, 'PATCH', { sponsored, tagline }), sponsored ? `${v.name} is sponsored` : `${v.name} is no longer sponsored`)) onChange();
+  };
+  return (
+    <div className={`panel stack ${v.sponsored ? 'venue-sponsored' : ''}`}>
+      <div className="row between">
+        <span><b>{v.name}</b>{v.area ? <span className="small muted"> · {v.area}</span> : null}</span>
+        {v.sponsored && <span className="chip sponsor">Sponsored</span>}
+      </div>
+      <input value={tagline} onChange={(e) => setTagline(e.target.value)} maxLength={120}
+        placeholder="Perk shown on featured nights, e.g. 2x1 drinks with your stamp" aria-label={`Perk for ${v.name}`} />
+      <div className="row">
+        {v.sponsored
+          ? <><button className="btn small grow" onClick={() => save(true)}>Save perk</button><button className="btn small grow" onClick={() => save(false)}>Stop sponsoring</button></>
+          : <button className="btn small primary grow" onClick={() => save(true)}>Make sponsored</button>}
+      </div>
     </div>
   );
 }

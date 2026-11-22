@@ -21,7 +21,7 @@ export function Player({ artistId, spotifyUrl, deezerId, autoPlay = false }: Pro
     );
   }
   if (deezerId) return <PreviewPlayer artistId={artistId} autoPlay={autoPlay} />;
-  return <div className="no-audio">No music linked yet. <a href="/artists">Add a Spotify link on the Artists page</a>.</div>;
+  return <div className="no-audio">No music linked yet.</div>;
 }
 
 // Remember that the person already pressed play once, so the next cards can start on their own

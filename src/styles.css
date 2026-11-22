@@ -366,3 +366,41 @@ input[type="range"] { padding: 0; accent-color: var(--accent); background: none;
 /* Artist details (genre / hometown / language) */
 .details-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .details-grid .btn { align-self: stretch; }
+
+/* ---------- Sponsored venue nights (Live) ---------- */
+:root { --sponsor: #F2C94C; --sponsor-ink: #1A1406; }
+.featured-night {
+  border-radius: 24px; overflow: hidden; border: 2px solid var(--sponsor);
+  background: linear-gradient(170deg, color-mix(in srgb, var(--sponsor) 12%, var(--surface)), var(--surface) 55%);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--sponsor) 12%, transparent);
+}
+.featured-media { position: relative; height: 170px; background-size: cover; background-position: center; }
+.featured-media::after { content: ""; position: absolute; inset: 0; background: linear-gradient(180deg, rgba(18,14,26,.25), rgba(18,14,26,.75)); }
+.featured-media > * { z-index: 1; }
+.sponsored-tag {
+  position: absolute; top: 14px; left: 14px; font-size: 12px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase;
+  background: var(--sponsor); color: var(--sponsor-ink); padding: 4px 10px; border-radius: 999px;
+}
+.featured-kicker { position: absolute; left: 16px; bottom: 12px; font: 800 13px/1 var(--body); letter-spacing: .12em; text-transform: uppercase; color: var(--sponsor); }
+.featured-body { padding: 14px 16px 16px; display: flex; flex-direction: column; gap: 10px; }
+.featured-body h3 { font-size: 24px; }
+.featured-price { font: 800 20px/1 var(--display); color: var(--sponsor); }
+.featured-perk {
+  padding: 10px 12px; border-radius: 12px; font-weight: 700; color: var(--sponsor);
+  background: color-mix(in srgb, var(--sponsor) 12%, transparent); border: 1px dashed color-mix(in srgb, var(--sponsor) 60%, transparent);
+}
+.gig.sponsored { border-color: color-mix(in srgb, var(--sponsor) 70%, var(--line)); }
+.chip.sponsor { background: var(--sponsor); color: var(--sponsor-ink); font-weight: 800; }
+
+/* Hidden business menu */
+.brand-btn { -webkit-touch-callout: none; user-select: none; -webkit-user-select: none; touch-action: manipulation; }
+.biz-link { display: flex; flex-direction: column; gap: 2px; padding: 14px 16px; border-radius: 16px; background: var(--surface-2); border: 1px solid var(--line); color: var(--text); text-decoration: none; }
+.biz-link:hover { border-color: var(--accent); }
+
+/* Admin: applications and venues */
+.app-card.contacted { opacity: .75; }
+.app-details { display: grid; gap: 6px; margin: 0; }
+.app-details div { display: grid; grid-template-columns: 110px 1fr; gap: 8px; font-size: 14px; }
+.app-details dt { color: var(--muted); }
+.app-details dd { margin: 0; overflow-wrap: anywhere; }
+.venue-sponsored { border-color: var(--sponsor); }
