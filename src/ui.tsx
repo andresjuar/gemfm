@@ -3,7 +3,7 @@ import { createContext, useCallback, useContext, useEffect, useRef, useState, ty
 
 interface Ui {
   toast: (msg: string) => void;
-  openSheet: (content: ReactNode) => void;
+  openSheet: (content: ReactNode, opts?: { dismissible?: boolean }) => void;
   closeSheet: () => void;
 }
 
@@ -18,6 +18,8 @@ export function useUi() {
 export function UiProvider({ children }: { children: ReactNode }) {
   const [message, setMessage] = useState<string | null>(null);
   const [sheet, setSheet] = useState<ReactNode>(null);
+  // Onboarding sheets can't be closed by tapping outside or pressing Escape.
+  const [dismissible, setDismissible] = useState(true);
   const timer = useRef<number | undefined>(undefined);
 
   const toast = useCallback((msg: string) => {
@@ -25,21 +27,24 @@ export function UiProvider({ children }: { children: ReactNode }) {
     window.clearTimeout(timer.current);
     timer.current = window.setTimeout(() => setMessage(null), 2200);
   }, []);
-  const openSheet = useCallback((content: ReactNode) => setSheet(content), []);
+  const openSheet = useCallback((content: ReactNode, opts?: { dismissible?: boolean }) => {
+    setDismissible(opts?.dismissible ?? true);
+    setSheet(content);
+  }, []);
   const closeSheet = useCallback(() => setSheet(null), []);
 
   useEffect(() => {
-    if (!sheet) return;
+    if (!sheet || !dismissible) return;
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setSheet(null);
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [sheet]);
+  }, [sheet, dismissible]);
 
   return (
     <UiContext.Provider value={{ toast, openSheet, closeSheet }}>
       {children}
       {sheet && (
-        <div className="sheet" onClick={(e) => e.target === e.currentTarget && closeSheet()}>
+        <div className="sheet" onClick={(e) => dismissible && e.target === e.currentTarget && closeSheet()}>
           <div className="sheet-card" role="dialog" aria-modal="true">{sheet}</div>
         </div>
       )}

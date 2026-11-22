@@ -1,12 +1,15 @@
 import type { Profile as ProfileData } from '../../shared/types';
 import type { AppActions } from '../App';
 import { api } from '../api';
+import { ArtistImage } from '../components/ArtistImage';
 import { Avatar } from '../components/Avatar';
+import { useTagLabels } from '../lib/useTagLabels';
 import { ago } from '../lib/format';
 import { useLoad } from '../lib/useLoad';
 
-export function Profile({ me, userId, switchUser }: AppActions & { userId: number }) {
+export function Profile({ me, userId, switchUser, editTastes }: AppActions & { userId: number }) {
   const { data: p, error, reload } = useLoad(() => api<ProfileData>('/users/' + userId), [userId]);
+  const labels = useTagLabels();
   if (error) return <div className="panel empty">{error}</div>;
   if (!p) return <div className="panel empty" aria-busy="true">Loading profile…</div>;
   const mine = p.id === me.id;
@@ -30,6 +33,15 @@ export function Profile({ me, userId, switchUser }: AppActions & { userId: numbe
         <div><b>{p.stats.saves}</b><span className="small muted">artists saved</span></div>
         <div><b>{p.stats.checkins}</b><span className="small muted">stamps</span></div>
       </div>
+      <section className="stack">
+        <div className="row between">
+          <span className="eyebrow">{mine ? 'Your tastes' : 'Tastes'}</span>
+          {mine && <button className="btn small" onClick={editTastes}>Edit</button>}
+        </div>
+        {p.tags.length
+          ? <div className="row wrap">{labels(p.tags).map((l) => <span key={l} className="chip taste">{l}</span>)}</div>
+          : <p className="muted small m0">{mine ? 'Pick the styles you like so Discover can show you artists for you.' : 'No tastes picked yet.'}</p>}
+      </section>
       <section className="stack">
         <span className="eyebrow">Badges</span>
         <div className="badges">
@@ -56,7 +68,16 @@ export function Profile({ me, userId, switchUser }: AppActions & { userId: numbe
       <section className="stack">
         <span className="eyebrow">Saved artists</span>
         {p.saved.length
-          ? <div className="row wrap">{p.saved.map((a) => <span key={a.id} className="chip">{a.name}</span>)}</div>
+          ? (
+            <div className="saved-grid">
+              {p.saved.map((a) => (
+                <div key={a.id} className="saved-artist">
+                  <ArtistImage artist={a} size={64} />
+                  <span className="small">{a.name}</span>
+                </div>
+              ))}
+            </div>
+          )
           : <p className="muted small m0">Nothing saved yet.</p>}
       </section>
     </>

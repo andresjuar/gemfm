@@ -21,7 +21,7 @@ export const session = {
   setAdminKey(key: string) { store.set('gemfm:admin-key', key || null); },
 };
 
-type Method = 'GET' | 'POST' | 'PATCH' | 'DELETE';
+type Method = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
 
 export async function api<T>(path: string, method: Method = 'GET', body?: unknown): Promise<T> {
   const res = await fetch('/api' + path, {

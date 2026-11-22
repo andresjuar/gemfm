@@ -65,8 +65,9 @@ async function connect(): Promise<Db> {
     },
   };
   const [{ exists }] = await db.query<{ exists: boolean }>("select to_regclass('public.users') is not null as exists");
+  // schema.sql is safe to re-run, so local databases pick up schema changes on start.
+  await db.exec(await sqlFile('schema.sql'));
   if (!exists) {
-    await db.exec(await sqlFile('schema.sql'));
     await db.exec(await sqlFile('seed.sql'));
     console.log(`Created local database in ${dataDir} with demo data.`);
   }

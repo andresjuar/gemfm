@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import type { Me } from '../shared/types';
 import { api, session } from './api';
 import { Avatar } from './components/Avatar';
+import { TagPicker } from './components/TagPicker';
 import { Discover } from './screens/Discover';
 import { Friends } from './screens/Friends';
 import { Live } from './screens/Live';
@@ -21,6 +22,7 @@ export interface AppActions {
   refreshMe: () => Promise<void>;
   showProfile: (userId: number) => void;
   switchUser: () => void;
+  editTastes: () => void;
 }
 
 export function App() {
@@ -28,10 +30,28 @@ export function App() {
   const [me, setMe] = useState<Me | null>(null);
   const [tab, setTab] = useState<Tab>('discover');
   const [profileId, setProfileId] = useState<number | null>(null);
-  // Bumped on user switch so every screen reloads its data.
+  // Bumped when the user or their tastes change so every screen reloads its data.
   const [generation, setGeneration] = useState(0);
 
-  const refreshMe = useCallback(async () => setMe(await api<Me>('/me')), []);
+  const refreshMe = useCallback(async () => {
+    const next = await api<Me>('/me');
+    setMe(next);
+    return next;
+  }, []);
+
+  const tastesSaved = useCallback(async () => {
+    await refreshMe();
+    setGeneration((g) => g + 1);
+  }, [refreshMe]);
+
+  const editTastes = useCallback((current: Me, onboarding = false) => {
+    openSheet(<TagPicker initial={current.tags} onboarding={onboarding} onSaved={tastesSaved} />, { dismissible: !onboarding });
+  }, [openSheet, tastesSaved]);
+
+  // First time a listener signs in, ask what they like before showing artists.
+  const signedIn = useCallback((current: Me) => {
+    if (!current.tags.length) editTastes(current, true);
+  }, [editTastes]);
 
   const switchUser = useCallback(() => {
     openSheet(
@@ -39,21 +59,22 @@ export function App() {
         onPick={async (id) => {
           session.setUser(id);
           closeSheet();
-          await refreshMe();
+          const current = await refreshMe();
           setGeneration((g) => g + 1);
           setTab('discover');
+          signedIn(current);
         }}
       />,
     );
-  }, [openSheet, closeSheet, refreshMe]);
+  }, [openSheet, closeSheet, refreshMe, signedIn]);
 
   useEffect(() => {
     if (!session.userId) return switchUser();
-    refreshMe().catch(() => {
+    refreshMe().then(signedIn).catch(() => {
       session.setUser(null);
       switchUser();
     });
-  }, [refreshMe, switchUser]);
+  }, [refreshMe, switchUser, signedIn]);
 
   const go = (next: Tab, userId: number | null = null) => {
     setTab(next);
@@ -63,9 +84,10 @@ export function App() {
 
   const actions: AppActions | null = me && {
     me,
-    refreshMe,
+    refreshMe: async () => { await refreshMe(); },
     showProfile: (id) => go('profile', id),
     switchUser,
+    editTastes: () => editTastes(me),
   };
 
   return (

@@ -15,6 +15,7 @@ import { readFile } from 'node:fs/promises';
 import { getDb } from '../server/db';
 import { randomColor } from '../server/lib/colors';
 import { findArtistByName, getArtist, normalize, pictureOf } from '../server/lib/deezer';
+import { spotifyThumbnail } from '../server/lib/photos';
 
 const args = process.argv.slice(2);
 const file = args.find((a) => !a.startsWith('--'));
@@ -82,8 +83,9 @@ for (const r of records) {
   } catch { /* Deezer unreachable: import without it */ }
   await sleep(150); // stay well under Deezer's rate limit
   const spotify = /^https:\/\/open\.spotify\.com\//.test(r.spotify_url ?? '') ? r.spotify_url : '';
+  const image = r.image_url || (dz ? pictureOf(dz) : '') || (spotify ? (await spotifyThumbnail(spotify)) ?? '' : '');
   const values = [r.name, r.genre ?? '', r.city || 'Guadalajara', r.bio ?? '', spotify,
-    r.image_url || (dz ? pictureOf(dz) : ''), dz?.id ?? null, dz?.nb_fan ?? null];
+    image, dz?.id ?? null, dz?.nb_fan ?? null];
   const [existing] = await db.query<{ id: number }>('select id from artists where lower(name) = lower($1)', [r.name]);
   let id: number;
   if (existing) {
@@ -100,7 +102,7 @@ for (const r of records) {
     id = row.id;
   }
   imported.push(id);
-  console.log(`  ${dz ? '✓' : '·'} ${r.name}${dz ? ` (Deezer: ${dz.nb_fan?.toLocaleString() ?? '?'} fans)` : ' (not found on Deezer, no preview)'}`);
+  console.log(`  ${dz ? '✓' : '·'} ${r.name}${dz ? ` (Deezer: ${dz.nb_fan?.toLocaleString() ?? '?'} fans)` : ' (not found on Deezer, no preview)'}${image ? '' : ' · no photo'}`);
 }
 
 if (args.includes('--demo-gigs')) {

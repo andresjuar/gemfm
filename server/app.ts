@@ -2,14 +2,16 @@
 // Netlify Functions (netlify/functions/api.ts).
 import { Hono, type Context, type Next } from 'hono';
 import type {
-  Artist, DiscoverArtist, FeedItem, Gig, Person, Preview, Stamp, Stats, User, Venue,
+  Artist, DiscoverArtist, FeedItem, Gig, Person, Preview, Stamp, Stats, Tag, User, Venue,
 } from '../shared/types';
 import { getDb } from './db';
 import { randomColor } from './lib/colors';
 import { findArtistByName, pictureOf, topTrack } from './lib/deezer';
+import { findPhoto, spotifyThumbnail } from './lib/photos';
 import { runRadar } from './lib/radar';
 
 const DAILY_GOAL = 5;
+const USER_COLS = 'id, name, handle, color, tags';
 // "Today" for the daily challenge, in the city the app is about.
 const TZ = process.env.APP_TIMEZONE || 'America/Mexico_City';
 
@@ -39,7 +41,7 @@ const toId = (v: unknown) => {
 async function auth(c: Context<Env>, next: Next) {
   const id = Number(c.req.header('x-user-id'));
   const db = await getDb();
-  const [user] = id ? await db.query<User>('select id, name, handle, color from users where id = $1', [id]) : [];
+  const [user] = id ? await db.query<User>(`select ${USER_COLS} from users where id = $1`, [id]) : [];
   if (!user) fail(401, 'Pick a demo user first.');
   c.set('user', user);
   await next();
@@ -99,7 +101,7 @@ app.get('/health', async (c) => {
 
 app.get('/users', async (c) => {
   const db = await getDb();
-  return c.json(await db.query<User>('select id, name, handle, color from users order by id'));
+  return c.json(await db.query<User>(`select ${USER_COLS} from users order by id`));
 });
 
 app.get('/me', auth, async (c) => {
@@ -107,10 +109,29 @@ app.get('/me', auth, async (c) => {
   return c.json({ ...user, stats: await stats(user.id), today: await todayCount(user.id), goal: DAILY_GOAL });
 });
 
+// ---------- Taste tags ----------
+app.get('/tags', async (c) => {
+  const db = await getDb();
+  return c.json(await db.query<Tag>(`
+    select t.slug, t.label, (select count(*)::int from artists a where a.status = 'approved' and t.slug = any(a.tags)) artists
+    from tags t order by t.sort`));
+});
+
+app.put('/me/tags', auth, async (c) => {
+  const { tags } = await c.req.json<{ tags?: unknown }>();
+  if (!Array.isArray(tags) || !tags.length) fail(400, 'Pick at least one style you like.');
+  const db = await getDb();
+  const valid = await db.query<{ slug: string }>('select slug from tags where slug = any($1::text[]) order by sort', [tags]);
+  if (!valid.length) fail(400, 'Pick at least one style you like.');
+  const [user] = await db.query<User>(`update users set tags = $2::text[] where id = $1 returning ${USER_COLS}`,
+    [c.get('user').id, valid.map((t) => t.slug)]);
+  return c.json(user);
+});
+
 app.get('/users/:id', auth, async (c) => {
   const db = await getDb();
   const me = c.get('user');
-  const [user] = await db.query<User>('select id, name, handle, color from users where id = $1', [toId(c.req.param('id'))]);
+  const [user] = await db.query<User>(`select ${USER_COLS} from users where id = $1`, [toId(c.req.param('id'))]);
   if (!user) fail(404, 'User not found.');
   const [stamps, saved, following] = await Promise.all([
     db.query<Stamp>(`
@@ -131,7 +152,7 @@ app.get('/people', auth, async (c) => {
   const db = await getDb();
   const q = `%${(c.req.query('q') || '').trim()}%`;
   return c.json(await db.query<Person>(`
-    select u.id, u.name, u.handle, u.color,
+    select u.id, u.name, u.handle, u.color, u.tags,
       exists(select 1 from follows f where f.follower_id = $1 and f.followee_id = u.id) following
     from users u where u.id <> $1 and (u.name ilike $2 or u.handle ilike $2) order by u.name`, [c.get('user').id, q]));
 });
@@ -156,12 +177,17 @@ app.get('/discover', auth, async (c) => {
   const user = c.get('user');
   const today = await todayCount(user.id);
   const left = Math.max(0, DAILY_GOAL - today);
+  // Artists that share a tag with the user's tastes come first (most shared
+  // tags first); the rest fill in so the deck never runs dry.
   const artists = await db.query<DiscoverArtist>(`
-    select a.*, ${ARTIST_SAVES},
-      (select g.starts_at from gigs g where g.artist_id = a.id and ${UPCOMING} order by g.starts_at limit 1) next_gig
-    from artists a
-    where a.status = 'approved' and a.id not in (select artist_id from swipes where user_id = $1)
-    order by random() limit $2`, [user.id, left || 10]);
+    select * from (
+      select a.*, ${ARTIST_SAVES},
+        (select g.starts_at from gigs g where g.artist_id = a.id and ${UPCOMING} order by g.starts_at limit 1) next_gig,
+        array(select t.label from tags t where t.slug = any(a.tags) and t.slug = any($3::text[]) order by t.sort) matched
+      from artists a
+      where a.status = 'approved' and a.id not in (select artist_id from swipes where user_id = $1)
+    ) x
+    order by cardinality(matched) desc, random() limit $2`, [user.id, left || 10, user.tags ?? []]);
   return c.json({ artists, today, goal: DAILY_GOAL, bonus: left === 0 });
 });
 
@@ -278,30 +304,74 @@ app.post('/artists', admin, async (c) => {
   if (!name || !b.genre?.trim()) fail(400, 'Name and genre are required.');
   checkSpotify(b.spotify_url);
   // Link to Deezer when the name matches exactly: gives a photo and a preview.
+  const spotify = b.spotify_url?.trim() || '';
   const dz = await findArtistByName(name!).catch(() => null);
+  // Photo: Deezer's, or else the one behind the Spotify link.
+  const image = (dz && pictureOf(dz)) || (spotify ? await spotifyThumbnail(spotify) : null) || '';
   const db = await getDb();
   const [row] = await db.query<{ id: number }>(`
     insert into artists (name, genre, city, bio, spotify_url, image_url, deezer_id, external_fans, color)
     values ($1, $2, $3, $4, $5, $6, $7, $8, $9)
     on conflict (deezer_id) do nothing returning id`,
-    [name, b.genre!.trim(), b.city?.trim() || 'Guadalajara', b.bio?.trim() || '', b.spotify_url?.trim() || '',
-      dz ? pictureOf(dz) : '', dz?.id ?? null, dz?.nb_fan ?? null, randomColor()]);
+    [name, b.genre!.trim(), b.city?.trim() || 'Guadalajara', b.bio?.trim() || '', spotify,
+      image, dz?.id ?? null, dz?.nb_fan ?? null, randomColor()]);
   if (!row) fail(400, 'That artist is already on gem.fm.');
-  return c.json({ id: row.id, deezer: !!dz });
+  return c.json({ id: row.id, deezer: !!dz, photo: !!image });
 });
+
+const EDITABLE = ['spotify_url', 'status', 'genre', 'city', 'bio', 'image_url'] as const;
+type ArtistPatch = Partial<Pick<Artist, (typeof EDITABLE)[number]>>;
 
 app.patch('/artists/:id', admin, async (c) => {
   const id = toId(c.req.param('id'));
-  const b = await c.req.json<Partial<Pick<Artist, 'spotify_url' | 'status' | 'genre' | 'city' | 'bio'>>>();
+  const b = await c.req.json<ArtistPatch>();
   checkSpotify(b.spotify_url);
   if (b.status && !['approved', 'pending', 'rejected'].includes(b.status)) fail(400, 'Unknown status.');
-  const fields = (['spotify_url', 'status', 'genre', 'city', 'bio'] as const).filter((k) => b[k] !== undefined);
+  if (b.image_url && !/^https:\/\/\S+$/.test(b.image_url.trim())) fail(400, 'The photo must be an https:// image link.');
+  const fields = EDITABLE.filter((k) => b[k] !== undefined);
   if (!fields.length) fail(400, 'Nothing to update.');
   const db = await getDb();
-  const rows = await db.query(`update artists set ${fields.map((k, i) => `${k} = $${i + 2}`).join(', ')} where id = $1 returning id`,
+  const [row] = await db.query<{ spotify_url: string; image_url: string }>(
+    `update artists set ${fields.map((k, i) => `${k} = $${i + 2}`).join(', ')} where id = $1 returning spotify_url, image_url`,
     [id, ...fields.map((k) => String(b[k]).trim())]);
-  if (!rows.length) fail(404, 'Artist not found.');
-  return c.json({ ok: true });
+  if (!row) fail(404, 'Artist not found.');
+  // A new Spotify link on an artist without a photo: use the link's picture.
+  let image_url = row.image_url;
+  if (b.spotify_url && !image_url) {
+    image_url = (await spotifyThumbnail(row.spotify_url)) || '';
+    if (image_url) await db.query('update artists set image_url = $2 where id = $1', [id, image_url]);
+  }
+  return c.json({ ok: true, image_url });
+});
+
+// Looks up a photo (Spotify link, then Deezer) and saves it.
+async function refreshPhoto(a: { id: number; name: string; spotify_url: string; deezer_id: number | string | null }) {
+  const found = await findPhoto(a);
+  if (!found) return null;
+  const db = await getDb();
+  await db.query(`update artists set image_url = $2,
+      deezer_id = coalesce(deezer_id, $3), external_fans = coalesce(external_fans, $4)
+    where id = $1 and not exists (select 1 from artists o where o.deezer_id = $3 and o.id <> $1)`,
+    [a.id, found.image_url, found.deezer?.id ?? null, found.deezer?.fans ?? null]);
+  return found;
+}
+
+app.post('/artists/:id/photo', admin, async (c) => {
+  const db = await getDb();
+  const [a] = await db.query<Artist>('select * from artists where id = $1', [toId(c.req.param('id'))]);
+  if (!a) fail(404, 'Artist not found.');
+  const found = await refreshPhoto(a);
+  if (!found) fail(404, `No photo found for ${a.name}. Add a Spotify artist link or paste an image link.`);
+  return c.json(found);
+});
+
+// Fills in photos for every approved artist that has none (e.g. after an import).
+app.post('/artists/photos', admin, async (c) => {
+  const db = await getDb();
+  const missing = await db.query<Artist>("select * from artists where image_url = '' and status = 'approved' order by id limit 20");
+  const results = await Promise.all(missing.map((a) => refreshPhoto(a).catch(() => null)));
+  const found = results.filter(Boolean).length;
+  return c.json({ checked: missing.length, found });
 });
 
 app.get('/venues', async (c) => {

@@ -5,6 +5,15 @@ export interface User {
   name: string;
   handle: string;
   color: string;
+  /** Slugs of the taste tags the user picked. */
+  tags: string[];
+}
+
+export interface Tag {
+  slug: string;
+  label: string;
+  /** How many approved artists carry this tag. */
+  artists: number;
 }
 
 export interface Badge {
@@ -48,12 +57,16 @@ export interface Artist {
   source: ArtistSource;
   status: ArtistStatus;
   color: string;
+  /** Taste tags, derived from genre by the database. */
+  tags: string[];
   created_at: string;
   saves: number;
 }
 
 export interface DiscoverArtist extends Artist {
   next_gig: string | null;
+  /** Labels of the user's tastes this artist matches. */
+  matched: string[];
 }
 
 export interface DiscoverResponse {

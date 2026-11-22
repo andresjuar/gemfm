@@ -78,6 +78,56 @@ create table if not exists recommendations (
   created_at  timestamptz not null default now()
 );
 
+-- ---------- Taste tags ----------
+-- The tags people pick when they sign in. An artist gets every tag whose
+-- pattern matches their genre (case-insensitive regex), so "Indie folk" is
+-- tagged indie + folk. Edit the patterns here to tune the matching.
+create table if not exists tags (
+  slug     text primary key,
+  label    text not null,
+  pattern  text not null,
+  sort     integer not null default 0
+);
+
+insert into tags (slug, label, pattern, sort) values
+  ('indie',        'Indie',            '\mindie',                                         1),
+  ('rock',         'Rock',             'rock|punk|garage|grunge|shoegaze|post-punk',       2),
+  ('pop',          'Pop',              '\mpop\M|dream pop|synth-?pop',                    3),
+  ('folk',         'Folk',             'folk|acoustic|acústic|cantautor|singer-songwriter|trova', 4),
+  ('rnb',          'R&B / Soul',       'r&b|\mrnb\M|soul',                                5),
+  ('hiphop',       'Hip hop',          'hip.?hop|\mrap\M|trap',                           6),
+  ('electronic',   'Electronic',       'electr|synth|house|techno|edm',                   7),
+  ('cumbia',       'Cumbia',           'cumbia|tropical',                                 8),
+  ('regional',     'Regional Mexican', 'regional|corrido|sierre|norteñ|banda|mariachi',   9),
+  ('reggaeton',    'Reggaeton',        'reggaet|urbano|perreo|dembow',                   10),
+  ('jazz',         'Jazz',             'jazz|bossa',                                     11),
+  ('experimental', 'Experimental',     'experimental|ambient|noise|avant',               12)
+on conflict (slug) do update set label = excluded.label, pattern = excluded.pattern, sort = excluded.sort;
+
+alter table artists add column if not exists tags text[] not null default '{}';
+alter table users   add column if not exists tags text[] not null default '{}';
+create index if not exists artists_tags_idx on artists using gin (tags);
+
+create or replace function artist_tags(genre text) returns text[]
+language sql stable as $$
+  select coalesce(array_agg(slug order by sort), '{}') from tags where coalesce(genre, '') ~* pattern
+$$;
+
+create or replace function set_artist_tags() returns trigger
+language plpgsql as $$
+begin
+  new.tags := artist_tags(new.genre);
+  return new;
+end
+$$;
+
+drop trigger if exists artists_set_tags on artists;
+create trigger artists_set_tags before insert or update of genre on artists
+  for each row execute function set_artist_tags();
+
+-- Re-tag existing artists (needed when you change a pattern above).
+update artists set tags = artist_tags(genre) where tags is distinct from artist_tags(genre);
+
 -- The app talks to Postgres only from the backend (Netlify Function) with the
 -- database connection string, which bypasses RLS. Turning RLS on with no
 -- policies blocks Supabase's public REST API (anon key) from reading or
@@ -90,3 +140,4 @@ alter table swipes          enable row level security;
 alter table checkins        enable row level security;
 alter table follows         enable row level security;
 alter table recommendations enable row level security;
+alter table tags            enable row level security;

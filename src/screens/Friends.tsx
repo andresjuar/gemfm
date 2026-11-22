@@ -2,6 +2,7 @@ import { useState, type FormEvent } from 'react';
 import type { FeedItem, Person, Profile } from '../../shared/types';
 import type { AppActions } from '../App';
 import { api } from '../api';
+import { ArtistImage } from '../components/ArtistImage';
 import { Avatar } from '../components/Avatar';
 import { Player } from '../components/Player';
 import { ago } from '../lib/format';
@@ -63,6 +64,10 @@ export function Friends({ me, refreshMe, showProfile }: AppActions) {
               {f.type === 'save' && <>saved <b>{f.artist}</b></>}
               {f.type === 'checkin' && <>got an early-fan stamp for <b>{f.artist}</b> at {f.venue}</>}
             </span>
+            <div className="feed-artist">
+              <ArtistImage artist={{ name: f.artist, image_url: f.image_url, color: f.color }} size={44} radius={10} />
+              <span className="small"><b>{f.artist}</b>{f.genre ? <><br /><span className="muted">{f.genre}</span></> : null}</span>
+            </div>
             {f.note && <span className="note">“{f.note}”</span>}
             {f.type === 'rec' && <Player artistId={f.artist_id} spotifyUrl={f.spotify_url} deezerId={f.deezer_id} />}
             <span className="small muted">{ago(f.at)}</span>

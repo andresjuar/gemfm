@@ -3,6 +3,7 @@
 import { useState, type FormEvent } from 'react';
 import type { Artist, RadarResult, Venue } from '../../shared/types';
 import { api, session } from '../api';
+import { ArtistImage } from '../components/ArtistImage';
 import { Player } from '../components/Player';
 import { compact, plural } from '../lib/format';
 import { useLoad } from '../lib/useLoad';
@@ -61,9 +62,13 @@ export function ArtistsPage() {
         <NewGig artists={approved.data ?? []} venues={venues.data ?? []} run={run} onNewVenue={venues.reload} />
 
         <section className="stack">
-          <span className="eyebrow">Artists and their Spotify links</span>
-          <p className="small muted m0">In Spotify, open a song, tap Share › Copy link and paste it here. Without one, cards play a Deezer preview when available.</p>
-          {approved.data?.map((a) => <SpotifyRow key={a.id} artist={a} run={run} />)}
+          <span className="eyebrow">Artists, Spotify links and photos</span>
+          <p className="small muted m0">
+            In Spotify, open the artist (or a song), tap Share › Copy link and paste it here. An artist link also brings their photo.
+            Without a link, cards play a Deezer preview when available.
+          </p>
+          {approved.data && <MissingPhotos artists={approved.data} run={run} onDone={approved.reload} />}
+          {approved.data?.map((a) => <ArtistRow key={`${a.id}-${a.image_url}`} artist={a} run={run} onChange={approved.reload} />)}
         </section>
       </main>
     </div>
@@ -229,21 +234,80 @@ function NewGig({ artists, venues, run, onNewVenue }: { artists: Artist[]; venue
   );
 }
 
-function SpotifyRow({ artist, run }: { artist: Artist; run: Run }) {
+function ArtistRow({ artist, run, onChange }: { artist: Artist; run: Run; onChange: () => void }) {
   const [url, setUrl] = useState(artist.spotify_url);
+  const [image, setImage] = useState(artist.image_url);
+  const [finding, setFinding] = useState(false);
+
+  const saveSpotify = async (e: FormEvent) => {
+    e.preventDefault();
+    await run(async () => {
+      const r = await api<{ image_url: string }>(`/artists/${artist.id}`, 'PATCH', { spotify_url: url.trim() });
+      setImage(r.image_url);
+    }, 'Spotify link saved');
+  };
+  const saveImage = () => run(() => api(`/artists/${artist.id}`, 'PATCH', { image_url: image.trim() }), image.trim() ? 'Photo saved' : 'Photo removed');
+  const findPhoto = async () => {
+    setFinding(true);
+    const ok = await run(async () => {
+      const r = await api<{ image_url: string; source: string }>(`/artists/${artist.id}/photo`, 'POST');
+      setImage(r.image_url);
+    }, 'Photo found');
+    setFinding(false);
+    if (ok) onChange();
+  };
+
   return (
-    <form className="panel stack" onSubmit={(e) => { e.preventDefault(); run(() => api(`/artists/${artist.id}`, 'PATCH', { spotify_url: url.trim() }), 'Spotify link saved'); }}>
-      <div className="row between">
-        <b>{artist.name}</b>
-        <span className="row">
-          {artist.deezer_id ? <span className="chip">Deezer preview</span> : null}
-          <span className="chip">{plural(artist.saves, 'fan')}</span>
-        </span>
+    <form className="panel stack" onSubmit={saveSpotify}>
+      <div className="row">
+        <ArtistImage artist={{ ...artist, image_url: image }} size={56} />
+        <div className="grow">
+          <b>{artist.name}</b>
+          <div className="row wrap mt4">
+            {artist.genre && <span className="chip">{artist.genre}</span>}
+            {artist.deezer_id ? <span className="chip">Deezer preview</span> : null}
+            <span className="chip">{plural(artist.saves, 'fan')}</span>
+          </div>
+        </div>
       </div>
       <div className="row">
         <input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="Paste Spotify link" aria-label={`Spotify link for ${artist.name}`} />
         <button className="btn small">Save</button>
       </div>
+      <details>
+        <summary className="small muted">Photo</summary>
+        <div className="stack mt4">
+          <div className="row">
+            <input value={image} onChange={(e) => setImage(e.target.value)} placeholder="https://… image link" aria-label={`Photo link for ${artist.name}`} />
+            <button type="button" className="btn small" onClick={saveImage}>Save</button>
+          </div>
+          <button type="button" className="btn small" onClick={findPhoto} disabled={finding}>
+            {finding ? 'Looking…' : 'Find photo automatically'}
+          </button>
+          <p className="small muted m0">Uses the Spotify artist link if there is one, otherwise looks the name up on Deezer.</p>
+        </div>
+      </details>
     </form>
+  );
+}
+
+function MissingPhotos({ artists, run, onDone }: { artists: Artist[]; run: Run; onDone: () => void }) {
+  const [busy, setBusy] = useState(false);
+  const missing = artists.filter((a) => !a.image_url).length;
+  if (!missing) return null;
+  const fill = async () => {
+    setBusy(true);
+    await run(async () => {
+      const r = await api<{ checked: number; found: number }>('/artists/photos', 'POST');
+      if (!r.found) throw new Error(`No photos found for ${plural(r.checked, 'artist')}. Add their Spotify artist links.`);
+    }, 'Photos updated');
+    setBusy(false);
+    onDone();
+  };
+  return (
+    <div className="panel row between">
+      <span className="small">{plural(missing, 'artist')} without a photo</span>
+      <button type="button" className="btn small primary" onClick={fill} disabled={busy}>{busy ? 'Looking…' : 'Find photos'}</button>
+    </div>
   );
 }
