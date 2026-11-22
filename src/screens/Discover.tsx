@@ -112,6 +112,7 @@ function SwipeCard({ artist: a, leaving, onSwipe }: { artist: DiscoverArtist; le
         {a.bio && <p className="muted m0">{a.bio}</p>}
         <div className="row wrap">
           {a.matched?.length > 0 && <span className="chip taste">Because you like {a.matched.join(' & ')}</span>}
+          {a.language && <span className="chip">{a.language === 'Instrumental' ? 'Instrumental' : `Sings in ${a.language}`}</span>}
           <span className="chip">{plural(a.saves, 'fan')} on gem.fm</span>
           {a.external_fans != null && <span className="chip">{compact(a.external_fans)} on Deezer</span>}
           {a.next_gig && <span className="chip hot">Live {when(a.next_gig)}</span>}

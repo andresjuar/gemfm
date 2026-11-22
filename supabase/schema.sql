@@ -92,20 +92,22 @@ create table if not exists tags (
 insert into tags (slug, label, pattern, sort) values
   ('indie',        'Indie',            '\mindie|independiente',                           0),
   ('alt',          'Alternative',      '\malt\M|alternativ',                              1),
-  ('rock',         'Rock',             'rock|punk|garage|grunge|shoegaze|post-punk',       2),
+  ('rock',         'Rock',             'rock|punk|garage|grunge|shoegaze|post-punk|metal', 2),
   ('pop',          'Pop',              '\mpop\M|dream pop|synth-?pop',                    3),
-  ('folk',         'Folk',             'folk|acoustic|acústic|cantautor|singer-songwriter|trova', 4),
+  ('folk',         'Folk',             'folk|acoustic|acústic|cantautor|singer|trova',     4),
   ('rnb',          'R&B / Soul',       'r&b|\mrnb\M|soul',                                5),
   ('hiphop',       'Hip hop',          'hip.?hop|\mrap\M|trap',                           6),
-  ('electronic',   'Electronic',       'electr|synth|house|techno|edm',                   7),
+  ('electronic',   'Electronic',       'electr|synth|house|techno|edm|dance',              7),
   ('cumbia',       'Cumbia',           'cumbia|tropical',                                 8),
-  ('regional',     'Regional Mexican', 'regional|corrido|sierre|norteñ|banda|mariachi',   9),
+  ('regional',     'Regional Mexican', 'regional|corrido|sierre|norteñ|banda|mariachi|mexican', 9),
   ('reggaeton',    'Reggaeton',        'reggaet|urbano|perreo|dembow',                   10),
   ('jazz',         'Jazz',             'jazz|bossa',                                     11),
   ('experimental', 'Experimental',     'experimental|ambient|noise|avant',               12)
 on conflict (slug) do update set label = excluded.label, pattern = excluded.pattern, sort = excluded.sort;
 
 alter table artists add column if not exists tags text[] not null default '{}';
+-- Language they sing in ("Spanish", "English"…), filled in automatically from song titles.
+alter table artists add column if not exists language text not null default '';
 alter table users   add column if not exists tags text[] not null default '{}';
 create index if not exists artists_tags_idx on artists using gin (tags);
 

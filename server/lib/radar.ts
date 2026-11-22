@@ -7,6 +7,7 @@ import type { Artist, RadarResult } from '../../shared/types';
 import type { Db } from '../db';
 import { findArtistByName, normalize, pictureOf, relatedArtists, searchArtists, type DeezerArtist } from './deezer';
 import { randomColor } from './colors';
+import { deezerDetails, mapLimit } from './details';
 
 export interface RadarOptions {
   seeds?: string[];
@@ -76,14 +77,18 @@ export async function runRadar(db: Db, opts: RadarOptions = {}): Promise<RadarRe
     .sort((a, b) => (b.artist.nb_fan ?? 0) - (a.artist.nb_fan ?? 0))
     .slice(0, limit);
 
+  // Genre and language from Deezer, a few artists at a time (Deezer allows ~50 requests / 5 s).
+  const details = await mapLimit(picks, 3, ({ artist }) => deezerDetails(artist.id).catch(() => ({ genre: '', language: '' })));
+
   const added: Artist[] = [];
-  for (const { artist: a, seed } of picks) {
+  for (const [i, { artist: a, seed }] of picks.entries()) {
     const rows = await db.query<Artist>(
-      `insert into artists (name, genre, bio, image_url, deezer_id, external_fans, source, status, color)
-       values ($1, $2, $3, $4, $5, $6, 'radar', 'pending', $7)
+      `insert into artists (name, genre, language, bio, image_url, deezer_id, external_fans, source, status, color)
+       values ($1, $2, $3, $4, $5, $6, $7, 'radar', 'pending', $8)
        on conflict (deezer_id) do nothing
        returning *, 0 as saves`,
-      [a.name, seed.genre, `Fans of ${seed.name} also listen to them.`, pictureOf(a), a.id, a.nb_fan ?? null, randomColor()],
+      [a.name, details[i].genre || seed.genre, details[i].language, `Fans of ${seed.name} also listen to them.`,
+        pictureOf(a), a.id, a.nb_fan ?? null, randomColor()],
     );
     added.push(...rows);
   }

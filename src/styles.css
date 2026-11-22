@@ -362,3 +362,7 @@ input[type="range"] { padding: 0; accent-color: var(--accent); background: none;
 .share-artist .tiny { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
 
 @media (prefers-reduced-motion: reduce) { .heart-burst { animation: none; } }
+
+/* Artist details (genre / hometown / language) */
+.details-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.details-grid .btn { align-self: stretch; }

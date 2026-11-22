@@ -44,8 +44,9 @@ export function ArtistsPage() {
             <span className="small muted">{pending.data ? plural(pending.data.length, 'artist') : ''}</span>
           </div>
           {pending.data?.length === 0 && <p className="small muted m0">Nothing pending. Run the radar to find new artists.</p>}
+          {pending.data && <FillMissing artists={pending.data} status="pending" run={run} onDone={pending.reload} />}
           {pending.data?.map((a) => (
-            <article key={a.id} className="panel stack">
+            <article key={`${a.id}-${a.genre}-${a.city}-${a.language}`} className="panel stack">
               <div className="row">
                 {a.image_url ? <img className="thumb" src={a.image_url} alt="" /> : null}
                 <div className="grow">
@@ -63,15 +64,19 @@ export function ArtistsPage() {
         <NewGig artists={approved.data ?? []} venues={venues.data ?? []} run={run} onNewVenue={venues.reload} />
 
         <section className="stack">
-          <span className="eyebrow">Artists, Spotify links and photos</span>
+          <span className="eyebrow">Artists, Spotify links, details and photos</span>
           <p className="small muted m0">
             In Spotify, open the artist (or a song), tap Share › Copy link and paste it here. An artist link also brings their photo.
             Without a link, cards play a Deezer preview when available.
           </p>
+          {approved.data && <FillMissing artists={approved.data} status="approved" run={run} onDone={approved.reload} />}
           {approved.data && <MissingPhotos artists={approved.data} run={run} onDone={approved.reload} />}
           {approved.data?.map((a) => <ArtistRow key={`${a.id}-${a.image_url}`} artist={a} run={run} onChange={approved.reload} />)}
         </section>
       </main>
+      <datalist id="languages">
+        {['Spanish', 'English', 'Portuguese', 'French', 'Instrumental'].map((l) => <option key={l} value={l} />)}
+      </datalist>
     </div>
   );
 }
@@ -139,20 +144,49 @@ function Radar({ onDone }: { onDone: () => void }) {
   );
 }
 
+type Details = { genre: string; city: string; language: string };
+
+/** Genre / hometown / language inputs with an "Auto-fill" button (Deezer + MusicBrainz). */
+function useDetails(artist: Artist) {
+  const [d, setD] = useState<Details>({ genre: artist.genre, city: artist.city, language: artist.language ?? '' });
+  const [busy, setBusy] = useState(false);
+  const set = (k: keyof Details) => (e: { target: { value: string } }) => setD((x) => ({ ...x, [k]: e.target.value }));
+  return { d, setD, busy, setBusy, set };
+}
+
+function DetailsFields({ artist, state, run }: { artist: Artist; state: ReturnType<typeof useDetails>; run: Run }) {
+  const { d, setD, busy, setBusy, set } = state;
+  const autoFill = async () => {
+    setBusy(true);
+    await run(async () => {
+      const r = await api<Details & { filled: string[] }>(`/artists/${artist.id}/details`, 'POST', { overwrite: false });
+      setD({ genre: d.genre || r.genre, city: d.city || r.city, language: d.language || r.language });
+      if (!r.filled.length) throw new Error('Nothing new found. Fill in the rest by hand.');
+    }, 'Details filled in');
+    setBusy(false);
+  };
+  return (
+    <div className="stack details-fields">
+      <div className="details-grid">
+        <input value={d.genre} onChange={set('genre')} placeholder="Genre" aria-label={`Genre for ${artist.name}`} />
+        <input value={d.city} onChange={set('city')} placeholder="From (city, country)" aria-label={`Hometown of ${artist.name}`} />
+        <input value={d.language} onChange={set('language')} placeholder="Language" aria-label={`Language of ${artist.name}`} list="languages" />
+        <button type="button" className="btn small" onClick={autoFill} disabled={busy}>{busy ? 'Looking…' : 'Auto-fill'}</button>
+      </div>
+    </div>
+  );
+}
+
 function PendingActions({ artist, onDone, run }: { artist: Artist; onDone: () => void; run: Run }) {
-  const [genre, setGenre] = useState(artist.genre);
-  const [city, setCity] = useState(artist.city);
+  const state = useDetails(artist);
   const decide = async (status: 'approved' | 'rejected') => {
-    const ok = await run(() => api(`/artists/${artist.id}`, 'PATCH', { status, genre, city }),
+    const ok = await run(() => api(`/artists/${artist.id}`, 'PATCH', { status, ...state.d }),
       status === 'approved' ? `${artist.name} is now in Discover` : `${artist.name} rejected`);
     if (ok) onDone();
   };
   return (
     <>
-      <div className="row">
-        <input value={genre} onChange={(e) => setGenre(e.target.value)} placeholder="Genre" aria-label={`Genre for ${artist.name}`} />
-        <input value={city} onChange={(e) => setCity(e.target.value)} placeholder="City" aria-label={`City for ${artist.name}`} />
-      </div>
+      <DetailsFields artist={artist} state={state} run={run} />
       <div className="row">
         <button className="btn small grow" onClick={() => decide('rejected')}>Reject</button>
         <button className="btn small primary grow" onClick={() => decide('approved')}>Approve</button>
@@ -161,13 +195,50 @@ function PendingActions({ artist, onDone, run }: { artist: Artist; onDone: () =>
   );
 }
 
+/** Fills in missing genre / language / hometown for many artists, a few per request. */
+function FillMissing({ artists, status, run, onDone }: { artists: Artist[]; status: 'approved' | 'pending'; run: Run; onDone: () => void }) {
+  const [progress, setProgress] = useState<string | null>(null);
+  const missing = artists.filter((a) => !a.genre || !a.language || !a.city).length;
+  if (!missing) return null;
+  const fill = async () => {
+    let updated = 0;
+    setProgress('Starting…');
+    await run(async () => {
+      let after = 0;
+      for (let round = 0; round < 40; round++) {
+        const r = await api<{ checked: number; updated: number; remaining: number; lastId: number }>('/artists/details', 'POST', { status, after });
+        updated += r.updated;
+        after = r.lastId;
+        setProgress(`${r.remaining} left…`);
+        if (!r.remaining || !r.checked) break;
+      }
+    }, 'Details filled in where found');
+    setProgress(null);
+    onDone();
+    if (!updated) run(async () => { throw new Error('Nothing new found. Fill in the rest by hand.'); }, '');
+  };
+  return (
+    <div className="panel row between">
+      <span className="small">{plural(missing, 'artist')} missing genre, hometown or language</span>
+      <button type="button" className="btn small primary" onClick={fill} disabled={!!progress}>{progress ?? 'Auto-fill all'}</button>
+    </div>
+  );
+}
+
 function NewArtist({ onDone, run }: { onDone: () => void; run: Run }) {
-  const empty = { name: '', genre: '', city: 'Guadalajara', bio: '', spotify_url: '' };
+  const empty = { name: '', genre: '', city: '', language: '', bio: '', spotify_url: '' };
   const [f, setF] = useState(empty);
+  const [busy, setBusy] = useState(false);
   const set = (k: keyof typeof empty) => (e: { target: { value: string } }) => setF({ ...f, [k]: e.target.value });
   const submit = async (e: FormEvent) => {
     e.preventDefault();
-    if (await run(() => api('/artists', 'POST', f), 'Artist added')) {
+    setBusy(true);
+    let added: { genre: string; city: string; language: string } | null = null;
+    const ok = await run(async () => { added = await api('/artists', 'POST', f); }, 'Artist added');
+    setBusy(false);
+    if (ok) {
+      const a = added as { genre: string; city: string; language: string } | null;
+      if (a) run(async () => {}, `Added: ${[a.genre, a.city, a.language].filter(Boolean).join(' · ') || 'no details found'}`);
       setF(empty);
       onDone();
     }
@@ -176,12 +247,16 @@ function NewArtist({ onDone, run }: { onDone: () => void; run: Run }) {
     <form className="panel stack" onSubmit={submit}>
       <span className="eyebrow">Join as an artist</span>
       <div className="field"><label htmlFor="a-name">Artist name</label><input id="a-name" required value={f.name} onChange={set('name')} /></div>
-      <div className="field"><label htmlFor="a-genre">Genre</label><input id="a-genre" required placeholder="Indie rock" value={f.genre} onChange={set('genre')} /></div>
-      <div className="field"><label htmlFor="a-city">City</label><input id="a-city" value={f.city} onChange={set('city')} /></div>
+      <div className="field"><label htmlFor="a-spotify">Spotify link (artist or song)</label><input id="a-spotify" placeholder="https://open.spotify.com/track/…" value={f.spotify_url} onChange={set('spotify_url')} /></div>
+      <div className="field"><label htmlFor="a-genre">Genre</label><input id="a-genre" placeholder="Leave empty to detect it" value={f.genre} onChange={set('genre')} /></div>
+      <div className="field"><label htmlFor="a-city">From</label><input id="a-city" placeholder="City, country (leave empty to look it up)" value={f.city} onChange={set('city')} /></div>
+      <div className="field"><label htmlFor="a-lang">Language</label><input id="a-lang" list="languages" placeholder="Leave empty to detect it" value={f.language} onChange={set('language')} /></div>
       <div className="field"><label htmlFor="a-bio">Short bio</label><input id="a-bio" maxLength={140} value={f.bio} onChange={set('bio')} /></div>
-      <div className="field"><label htmlFor="a-spotify">Spotify link</label><input id="a-spotify" placeholder="https://open.spotify.com/track/…" value={f.spotify_url} onChange={set('spotify_url')} /></div>
-      <p className="small muted m0">If the name matches an artist on Deezer, their photo and a preview are added automatically.</p>
-      <button className="btn primary">Add artist</button>
+      <p className="small muted m0">
+        Leave genre, hometown or language empty and gem.fm fills them in: genre and language from Deezer (via their songs),
+        hometown from MusicBrainz when it knows the artist. The photo and a preview come too.
+      </p>
+      <button className="btn primary" disabled={busy}>{busy ? 'Looking them up…' : 'Add artist'}</button>
     </form>
   );
 }
@@ -239,6 +314,10 @@ function ArtistRow({ artist, run, onChange }: { artist: Artist; run: Run; onChan
   const [url, setUrl] = useState(artist.spotify_url);
   const [image, setImage] = useState(artist.image_url);
   const [finding, setFinding] = useState(false);
+  const details = useDetails(artist);
+  const saveDetails = async () => {
+    if (await run(() => api(`/artists/${artist.id}`, 'PATCH', details.d), 'Details saved')) onChange();
+  };
 
   const saveSpotify = async (e: FormEvent) => {
     e.preventDefault();
@@ -266,6 +345,8 @@ function ArtistRow({ artist, run, onChange }: { artist: Artist; run: Run; onChan
           <b>{artist.name}</b>
           <div className="row wrap mt4">
             {artist.genre && <span className="chip">{artist.genre}</span>}
+            {artist.city && <span className="chip">{artist.city}</span>}
+            {artist.language && <span className="chip">{artist.language}</span>}
             {artist.deezer_id ? <span className="chip">Deezer preview</span> : null}
             <span className="chip">{plural(artist.saves, 'fan')}</span>
           </div>
@@ -275,6 +356,13 @@ function ArtistRow({ artist, run, onChange }: { artist: Artist; run: Run; onChan
         <input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="Paste Spotify link" aria-label={`Spotify link for ${artist.name}`} />
         <button className="btn small">Save</button>
       </div>
+      <details>
+        <summary className="small muted">Genre, hometown and language</summary>
+        <div className="stack mt4">
+          <DetailsFields artist={artist} state={details} run={run} />
+          <button type="button" className="btn small primary" onClick={saveDetails}>Save details</button>
+        </div>
+      </details>
       <details>
         <summary className="small muted">Photo</summary>
         <div className="stack mt4">

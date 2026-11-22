@@ -5,12 +5,13 @@
 //
 // Columns (header row required, any order, English or Spanish names):
 //   name/nombre (required), genre/genero, city/ciudad, bio/descripcion,
-//   spotify_url/spotify, image_url/imagen, deezer_id
+//   spotify_url/spotify, image_url/imagen, deezer_id, language/idioma
 //   (link/enlace also work for the Spotify column; other columns are ignored)
 // Repeated artists are imported once. With a Spotify song link, the artist is
 // matched on Deezer through that song (so namesakes aren't mixed up) for a
 // photo and fan count; otherwise by exact name. Existing artists (same name)
-// are updated.
+// are updated. Empty genre / language / city are filled in automatically
+// (Deezer for genre and language, MusicBrainz for hometown); these show with * in the output.
 //
 // --replace        delete every current artist first (and their gigs, swipes, recs)
 // --demo-gigs      create one upcoming gig per imported artist at the existing venues
@@ -19,6 +20,7 @@ import { readFile } from 'node:fs/promises';
 import { getDb } from '../server/db';
 import { randomColor } from '../server/lib/colors';
 import { normalize, pictureOf } from '../server/lib/deezer';
+import { findDetails } from '../server/lib/details';
 import { hasRealPicture, isSpotifyArtistLink, isSpotifyTrackLink, matchDeezer, spotifyOembed } from '../server/lib/photos';
 
 const args = process.argv.slice(2);
@@ -57,6 +59,7 @@ const ALIASES: Record<string, string> = {
   spotify_url: 'spotify_url', spotify: 'spotify_url', link: 'spotify_url', enlace: 'spotify_url', url: 'spotify_url',
   image_url: 'image_url', imagen: 'image_url', image: 'image_url', foto: 'image_url',
   deezer_id: 'deezer_id', deezer: 'deezer_id',
+  language: 'language', idioma: 'language', lengua: 'language',
 };
 
 const [header, ...lines] = parseCsv((await readFile(file, 'utf8')).replace(/^﻿/, ''));
@@ -99,20 +102,28 @@ for (const r of records) {
     || (dz && hasRealPicture(dz) ? pictureOf(dz) : '')
     || oembed?.thumbnail || '';
   const bio = r.bio || (isSpotifyTrackLink(spotify) && oembed?.title ? `Start with “${oembed.title}”.` : '');
-  const values = [r.name, r.genre ?? '', r.city || 'Guadalajara', bio, spotify,
-    image, dz?.id ?? null, dz?.nb_fan ?? null];
+  // Whatever the sheet leaves empty: genre and language from Deezer, hometown from MusicBrainz.
+  const found = await findDetails({
+    name: r.name, deezerId: dz?.id ?? null,
+    need: { genre: !r.genre, language: !r.language, city: !r.city },
+  });
+  const genre = r.genre || found.genre;
+  const city = r.city || found.city;
+  const language = r.language || found.language;
+  const values = [r.name, genre, city, bio, spotify, image, dz?.id ?? null, dz?.nb_fan ?? null, language];
   const [existing] = await db.query<{ id: number }>('select id from artists where lower(name) = lower($1)', [r.name]);
   let id: number;
   if (existing) {
-    await db.query(`update artists set name = $2, genre = coalesce(nullif($3, ''), genre), city = $4, bio = coalesce(nullif($5, ''), bio),
-      spotify_url = coalesce(nullif($6, ''), spotify_url), image_url = coalesce(nullif($7, ''), image_url),
-      deezer_id = coalesce($8, deezer_id), external_fans = coalesce($9, external_fans), status = 'approved' where id = $1`,
+    await db.query(`update artists set name = $2, genre = coalesce(nullif($3, ''), genre), city = coalesce(nullif($4, ''), city),
+      bio = coalesce(nullif($5, ''), bio), spotify_url = coalesce(nullif($6, ''), spotify_url), image_url = coalesce(nullif($7, ''), image_url),
+      deezer_id = coalesce($8, deezer_id), external_fans = coalesce($9, external_fans), language = coalesce(nullif($10, ''), language),
+      status = 'approved' where id = $1`,
       [existing.id, ...values]);
     id = existing.id;
   } else {
     const [row] = await db.query<{ id: number }>(`insert into artists
-      (name, genre, city, bio, spotify_url, image_url, deezer_id, external_fans, source, status, color)
-      values ($1, $2, $3, $4, $5, $6, $7, $8, 'import', 'approved', $9)
+      (name, genre, city, bio, spotify_url, image_url, deezer_id, external_fans, language, source, status, color)
+      values ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'import', 'approved', $10)
       on conflict (deezer_id) do update set name = excluded.name returning id`, [...values, randomColor()]);
     id = row.id;
   }
@@ -120,7 +131,9 @@ for (const r of records) {
   const photoFrom = !image ? 'no photo' : image === r.image_url ? 'photo: yours'
     : image === pictureOf(dz ?? { id: 0, name: '', link: '' }) ? 'photo: Deezer'
     : isSpotifyArtistLink(spotify) ? 'photo: Spotify artist' : 'photo: cover';
-  console.log(`  ${r.name.padEnd(24)} ${(r.genre || '').padEnd(28)} ${dz ? `Deezer ${dz.nb_fan?.toLocaleString() ?? '?'} fans` : 'not on Deezer'} · ${photoFrom}`);
+  const auto = (v: string, own?: string) => (own ? v : v ? `${v}*` : '?');
+  console.log(`  ${r.name.padEnd(22)} ${auto(genre, r.genre).padEnd(26)} ${auto(city, r.city).padEnd(18)} ${auto(language, r.language).padEnd(10)} `
+    + `${dz ? `Deezer ${dz.nb_fan?.toLocaleString() ?? '?'} fans` : 'not on Deezer'} · ${photoFrom}`);
 }
 
 if (args.includes('--demo-gigs')) {
@@ -180,5 +193,5 @@ if (args.includes('--demo-activity') && imported.length >= 6) {
   console.log('Added demo friend activity (saves, recommendations, likes, comments, a check-in).');
 }
 
-console.log('Done.');
+console.log('Done. * = filled in automatically, ? = not found (edit it on /artists).');
 process.exit(0);

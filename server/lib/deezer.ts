@@ -22,7 +22,8 @@ export interface DeezerTrack {
 }
 
 async function get<T>(pathname: string): Promise<T> {
-  const res = await fetch(BASE + pathname, { signal: AbortSignal.timeout(6000) });
+  // English genre names, whatever country the server runs in.
+  const res = await fetch(BASE + pathname, { signal: AbortSignal.timeout(6000), headers: { 'Accept-Language': 'en' } });
   if (!res.ok) throw new Error(`Deezer ${res.status} for ${pathname}`);
   const body = (await res.json()) as T & { error?: { message?: string } };
   if (body && typeof body === 'object' && 'error' in body && body.error) {
@@ -67,6 +68,20 @@ export async function findArtistBySong(name: string, song: string) {
 export async function relatedArtists(id: number, limit = 25) {
   const r = await get<{ data: DeezerArtist[] }>(`/artist/${id}/related?limit=${limit}`);
   return r.data ?? [];
+}
+
+export interface DeezerTopTrack extends DeezerTrack {
+  album: { id: number; title: string };
+}
+
+export async function topTracks(id: number, limit = 10) {
+  const r = await get<{ data: DeezerTopTrack[] }>(`/artist/${id}/top?limit=${limit}`);
+  return r.data ?? [];
+}
+
+export async function albumGenres(albumId: number) {
+  const r = await get<{ genres?: { data: { name: string }[] } }>(`/album/${albumId}`);
+  return (r.genres?.data ?? []).map((g) => g.name);
 }
 
 export async function topTrack(id: number) {

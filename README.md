@@ -73,6 +73,25 @@ Las etiquetas viven en la tabla `tags` (`supabase/schema.sql`). Cada una tiene u
 
 Para agregar o ajustar etiquetas, edita el `insert into tags` de `schema.sql` y vuelve a correrlo (es seguro correrlo varias veces).
 
+## Género, procedencia e idioma automáticos
+
+Cuando un artista entra sin estos datos (radar, alta en `/artists` o importación), gem.fm los busca solo:
+
+| Dato | De dónde sale | Qué tan confiable |
+|---|---|---|
+| **Género** | Géneros de Deezer de los álbumes de sus canciones más escuchadas (p. ej. "Alternative / Indie Rock") | Alta, si está en Deezer |
+| **Idioma** | Palabras de los títulos de sus canciones y álbumes (Spanish, English, Portuguese, French). Si no es claro, lo deja vacío | Buena; falla con artistas de 1–2 canciones con títulos cortos |
+| **Procedencia** | MusicBrainz (ciudad donde empezó o país). Solo si hay un único artista con ese nombre | Baja para artistas pequeños; a veces el servicio está saturado |
+
+En `/artists`:
+- **Auto-fill** en cada artista llena lo que falte (no borra lo que escribiste).
+- **Auto-fill all** lo hace para todos los pendientes o aprobados, de 5 en 5 (MusicBrainz permite una consulta por segundo).
+- En *Join as an artist* basta con el nombre (mejor si pegas el link de Spotify de una canción): género, idioma, foto y preview se llenan solos.
+
+El idioma aparece en las tarjetas de Discover ("Sings in Spanish"). Del género salen las etiquetas de gustos.
+
+Opcional: `MUSICBRAINZ_CONTACT` (correo o URL) en las variables de entorno; MusicBrainz pide que las apps se identifiquen y responde mejor así.
+
 ## Fotos de artistas
 
 Se buscan solas, sin llaves de API:

@@ -57,6 +57,8 @@ export interface Artist {
   source: ArtistSource;
   status: ArtistStatus;
   color: string;
+  /** Language they sing in ("Spanish", "English"…), detected automatically. */
+  language: string;
   /** Taste tags, derived from genre by the database. */
   tags: string[];
   created_at: string;

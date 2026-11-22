@@ -10,8 +10,9 @@ import {
   EMAIL_RE, HANDLE_RE, SESSION_COOKIE, SESSION_DAYS, hashPassword, hashToken, newSessionToken, verifyPassword,
 } from './lib/auth';
 import { randomAvatarColor, randomColor } from './lib/colors';
-import { findArtistByName, pictureOf, topTrack } from './lib/deezer';
-import { findPhoto, spotifyThumbnail } from './lib/photos';
+import { pictureOf, topTrack } from './lib/deezer';
+import { findDetails } from './lib/details';
+import { findPhoto, hasRealPicture, matchDeezer, spotifyThumbnail } from './lib/photos';
 import { runRadar } from './lib/radar';
 
 const DAILY_GOAL = 5;
@@ -447,27 +448,79 @@ app.get('/artists', async (c) => {
 });
 
 app.post('/artists', admin, async (c) => {
-  const b = await c.req.json<{ name?: string; genre?: string; city?: string; bio?: string; spotify_url?: string }>();
+  const b = await c.req.json<{ name?: string; genre?: string; city?: string; language?: string; bio?: string; spotify_url?: string }>();
   const name = b.name?.trim();
-  if (!name || !b.genre?.trim()) fail(400, 'Name and genre are required.');
+  if (!name) fail(400, 'Artist name is required.');
   checkSpotify(b.spotify_url);
-  // Link to Deezer when the name matches exactly: gives a photo and a preview.
   const spotify = b.spotify_url?.trim() || '';
-  const dz = await findArtistByName(name!).catch(() => null);
-  // Photo: Deezer's, or else the one behind the Spotify link.
-  const image = (dz && pictureOf(dz)) || (spotify ? await spotifyThumbnail(spotify) : null) || '';
+  // Deezer match (through their song when there's a Spotify song link): photo, preview, genre, language.
+  const dz = await matchDeezer({ name: name!, spotify_url: spotify, deezer_id: null });
+  const found = await findDetails({
+    name: name!, deezerId: dz?.id ?? null,
+    need: { genre: !b.genre?.trim(), language: !b.language?.trim(), city: !b.city?.trim() },
+  });
+  const genre = b.genre?.trim() || found.genre;
+  if (!genre) fail(400, `Couldn’t find ${name}’s genre automatically. Type it in.`);
+  const image = (dz && hasRealPicture(dz) ? pictureOf(dz) : '') || (spotify ? await spotifyThumbnail(spotify) : null) || '';
   const db = await getDb();
   const [row] = await db.query<{ id: number }>(`
-    insert into artists (name, genre, city, bio, spotify_url, image_url, deezer_id, external_fans, color)
-    values ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+    insert into artists (name, genre, city, language, bio, spotify_url, image_url, deezer_id, external_fans, color)
+    values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
     on conflict (deezer_id) do nothing returning id`,
-    [name, b.genre!.trim(), b.city?.trim() || 'Guadalajara', b.bio?.trim() || '', spotify,
+    [name, genre, b.city?.trim() || found.city, b.language?.trim() || found.language, b.bio?.trim() || '', spotify,
       image, dz?.id ?? null, dz?.nb_fan ?? null, randomColor()]);
   if (!row) fail(400, 'That artist is already on gem.fm.');
-  return c.json({ id: row.id, deezer: !!dz, photo: !!image });
+  return c.json({ id: row.id, deezer: !!dz, photo: !!image, genre, city: b.city?.trim() || found.city, language: b.language?.trim() || found.language });
 });
 
-const EDITABLE = ['spotify_url', 'status', 'genre', 'city', 'bio', 'image_url'] as const;
+// Fills in genre, language and hometown where they're empty (or all of them with overwrite).
+async function fillDetails(a: Artist, overwrite = false) {
+  const db = await getDb();
+  let deezerId = a.deezer_id ? Number(a.deezer_id) : null;
+  if (!deezerId) {
+    const dz = await matchDeezer({ name: a.name, spotify_url: a.spotify_url, deezer_id: null });
+    if (dz) {
+      deezerId = dz.id;
+      await db.query(`update artists set deezer_id = $2, external_fans = coalesce(external_fans, $3)
+        where id = $1 and not exists (select 1 from artists o where o.deezer_id = $2 and o.id <> $1)`, [a.id, dz.id, dz.nb_fan ?? null]);
+    }
+  }
+  const need = { genre: overwrite || !a.genre, language: overwrite || !a.language, city: overwrite || !a.city };
+  const found = await findDetails({ name: a.name, deezerId, need });
+  const next = {
+    genre: (need.genre && found.genre) || a.genre,
+    language: (need.language && found.language) || a.language,
+    city: (need.city && found.city) || a.city,
+  };
+  await db.query('update artists set genre = $2, language = $3, city = $4 where id = $1', [a.id, next.genre, next.language, next.city]);
+  const filled = (Object.keys(next) as (keyof typeof next)[]).filter((k) => next[k] !== a[k]);
+  return { ...next, filled };
+}
+
+app.post('/artists/:id/details', admin, async (c) => {
+  const { overwrite } = await c.req.json<{ overwrite?: boolean }>().catch(() => ({ overwrite: false }));
+  const db = await getDb();
+  const [a] = await db.query<Artist>('select * from artists where id = $1', [toId(c.req.param('id'))]);
+  if (!a) fail(404, 'Artist not found.');
+  return c.json(await fillDetails(a, !!overwrite));
+});
+
+// Fills in missing details for a few artists per call (MusicBrainz allows ~1 request/second).
+app.post('/artists/details', admin, async (c) => {
+  // `after` walks forward through the list, so artists we can't complete don't block the rest.
+  const { status, after } = await c.req.json<{ status?: string; after?: number }>().catch(() => ({ status: undefined, after: 0 }));
+  const db = await getDb();
+  const where = `(genre = '' or language = '' or city = '') and status = $1 and id > $2`;
+  const params = [status === 'pending' ? 'pending' : 'approved', Number(after) || 0];
+  const missing = await db.query<Artist>(`select * from artists where ${where} order by id limit 5`, params);
+  const results = [];
+  for (const a of missing) results.push(await fillDetails(a).catch(() => null));
+  const lastId = missing.at(-1)?.id ?? Number(after) ?? 0;
+  const [{ n }] = await db.query<{ n: number }>(`select count(*)::int n from artists where ${where}`, [params[0], lastId]);
+  return c.json({ checked: missing.length, updated: results.filter((r) => r?.filled.length).length, remaining: n, lastId });
+});
+
+const EDITABLE = ['spotify_url', 'status', 'genre', 'city', 'language', 'bio', 'image_url'] as const;
 type ArtistPatch = Partial<Pick<Artist, (typeof EDITABLE)[number]>>;
 
 app.patch('/artists/:id', admin, async (c) => {
