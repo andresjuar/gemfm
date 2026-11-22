@@ -90,13 +90,18 @@ Ed Maverick,Folk,Chihuahua,Canciones íntimas desde Chihuahua,https://open.spoti
 ```
 
 ```bash
-npm run import:artists -- artistas.csv --replace --demo-gigs
+npm run import:artists -- data/artists.csv --replace --demo-gigs --demo-activity
 ```
 
-- Busca cada nombre en Deezer: si coincide, agrega foto, número de fans y preview de 30 s. Si no, toma la foto del link de Spotify.
+`data/artists.csv` tiene los 18 artistas reales que ya están cargados en Supabase.
+
+- Los artistas repetidos (por ejemplo, una fila por día) se importan una sola vez. La columna del link puede llamarse `spotify`, `spotify_url`, `link` o `enlace`.
+- Con un link de **canción** de Spotify, busca esa misma canción en Deezer para encontrar al artista correcto (aunque haya otros con el mismo nombre): de ahí salen foto y número de fans. Sin link, busca el nombre exacto. Si no está en Deezer, usa la foto del link de Spotify (foto del artista o portada).
+- La descripción queda como *Start with “nombre de la canción”* si no traes una.
 - Escribe bien el género: de ahí salen las etiquetas de gustos.
 - `--replace` borra los artistas demo (y sus tocadas, swipes y recomendaciones).
-- `--demo-gigs` crea una tocada próxima por artista en los venues existentes, para que la pestaña Live no quede vacía.
+- `--demo-gigs` crea una tocada próxima por artista en los venues existentes (la primera, hoy en la noche), para que la pestaña Live no quede vacía.
+- `--demo-activity` hace que los amigos demo guarden y recomienden a los artistas importados, para que el feed de Friends tenga actividad.
 - Escribe en Supabase si `.env` tiene `DATABASE_URL`; si no, en la BD local.
 
 ## Deploy en Netlify

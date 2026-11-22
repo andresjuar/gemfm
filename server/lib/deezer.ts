@@ -48,6 +48,22 @@ export async function findArtistByName(name: string) {
 
 export const getArtist = (id: number) => get<DeezerArtist>(`/artist/${id}`);
 
+/**
+ * The Deezer artist behind a known song, so we don't confuse artists that
+ * share a name. Returns null unless the song's artist name matches.
+ */
+export async function findArtistBySong(name: string, song: string) {
+  type Hit = DeezerTrack & { artist: { id: number; name: string } };
+  const want = normalize(name);
+  // Deezer's artist:"…" filter is unreliable, so search plainly and check the artist ourselves.
+  for (const q of [`${name} ${song}`, `track:"${song.replace(/"/g, '')}"`]) {
+    const r = await get<{ data: Hit[] }>(`/search?q=${encodeURIComponent(q)}&limit=25`);
+    const hit = (r.data ?? []).find((t) => normalize(t.artist.name) === want);
+    if (hit) return getArtist(hit.artist.id);
+  }
+  return null;
+}
+
 export async function relatedArtists(id: number, limit = 25) {
   const r = await get<{ data: DeezerArtist[] }>(`/artist/${id}/related?limit=${limit}`);
   return r.data ?? [];

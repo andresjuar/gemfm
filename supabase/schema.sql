@@ -90,7 +90,8 @@ create table if not exists tags (
 );
 
 insert into tags (slug, label, pattern, sort) values
-  ('indie',        'Indie',            '\mindie',                                         1),
+  ('indie',        'Indie',            '\mindie|independiente',                           0),
+  ('alt',          'Alternative',      '\malt\M|alternativ',                              1),
   ('rock',         'Rock',             'rock|punk|garage|grunge|shoegaze|post-punk',       2),
   ('pop',          'Pop',              '\mpop\M|dream pop|synth-?pop',                    3),
   ('folk',         'Folk',             'folk|acoustic|acústic|cantautor|singer-songwriter|trova', 4),
