@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client';
 import { App } from './App';
 import { ArtistLanding } from './landing/ArtistLanding';
 import { VenueLanding } from './landing/VenueLanding';
+import { watchNetlifyBadge } from './lib/netlifyBadge';
 import { AdminPage } from './screens/AdminPage';
 import { UiProvider } from './ui';
 import './styles.css';
@@ -17,6 +18,8 @@ const pages: Record<string, () => ReactElement> = {
   '/venues': () => <VenueLanding />,
 };
 const page = (pages[path] ?? (() => <App />))();
+
+watchNetlifyBadge();
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
