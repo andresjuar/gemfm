@@ -76,7 +76,7 @@ async function startSession(c: Context<Env>, userId: number) {
 // Artists page must send the same key.
 async function admin(c: Context<Env>, next: Next) {
   const key = process.env.ADMIN_KEY;
-  if (key && c.req.header('x-admin-key') !== key) fail(403, 'Wrong or missing admin key. Enter it at the top of the Artists page.');
+  if (key && c.req.header('x-admin-key') !== key) fail(403, 'Wrong or missing admin key. Enter it at the top of the Admin page (/admin).');
   await next();
 }
 
