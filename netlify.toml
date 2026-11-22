@@ -1,0 +1,18 @@
+[build]
+  command = "npm run build"
+  publish = "dist"
+
+[build.environment]
+  NODE_VERSION = "22"
+
+[functions]
+  directory = "netlify/functions"
+  node_bundler = "esbuild"
+  # Shipped as-is from node_modules instead of bundled (pg is CommonJS).
+  external_node_modules = ["pg"]
+
+# The React app handles its own routes (/, /artists).
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200

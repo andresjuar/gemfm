@@ -1,75 +1,127 @@
-# gem.fm MVP
+# gem.fm
 
-From first listen to front row: discover emerging artists, go to their gigs, share with friends.
+De la primera escucha a la primera fila: descubre artistas emergentes, ve a sus tocadas y compártelos con tus amigos.
 
-## Run it
+- **Discover**: desliza tarjetas de artistas (Save / Skip). Reto diario de 5 artistas, luego ronda bonus.
+- **Live**: tocadas en Guadalajara. Hacer check-in te da un sello de *early fan* con tu número de fan.
+- **Friends**: feed de lo que guardan, recomiendan y a dónde van tus amigos.
+- **/artists**: lado del artista: agregar artistas, tocadas, links de Spotify y revisar lo que encontró el **radar de artistas emergentes**.
+
+## Stack
+
+| Parte | Tecnología |
+|---|---|
+| Frontend | React 19 + Vite + TypeScript (`src/`) |
+| Backend | [Hono](https://hono.dev) + TypeScript (`server/`). Corre igual en local y como Netlify Function |
+| Base de datos | Postgres: Supabase en producción, [PGlite](https://pglite.dev) (Postgres local, sin instalar nada) en desarrollo |
+| Música | Embeds de Spotify y previews de 30 s de la API pública de Deezer |
+| Deploy | Netlify (sitio estático + Functions) |
+
+```
+src/                 App de React (screens/, components/)
+server/app.ts        Todas las rutas de la API (/api/*)
+server/db.ts         Conexión: Supabase (DATABASE_URL) o PGlite local
+server/lib/radar.ts  Radar de artistas emergentes (Deezer)
+shared/types.ts      Tipos compartidos entre frontend y backend
+netlify/functions/   api.ts (la API) y radar-weekly.ts (radar cada lunes)
+supabase/            schema.sql y seed.sql
+scripts/             Importar artistas, correr el radar, reiniciar la BD
+docs/investigacion.md  Spotify, Apple Music, radar y costos de Netlify
+```
+
+## Correrlo en tu compu
+
+Necesitas Node 20 o más nuevo.
 
 ```bash
 npm install
-npm start          # http://localhost:3000
-npm run reset      # wipe and reseed demo data
+npm run dev
 ```
 
-Needs Node 18+. The database (`data.sqlite`) is created and seeded on first start.
+Abre http://localhost:5173. La primera vez se crea una base de datos local en `.pglite/` con datos demo; no necesitas Supabase para desarrollar.
 
-**Show it on your phone in class:** run it on your laptop, connect the phone to the same Wi-Fi, and open `http://<your-laptop-IP>:3000`. To get a public link, deploy to Render or Railway (build: `npm install`, start: `npm start`). On free tiers the disk resets on each deploy, and the demo data reseeds itself.
+En tu celular (misma red Wi-Fi) abre la dirección **Network** que imprime Vite, por ejemplo `http://192.168.x.x:5173`.
 
-## Add real music
+Otros comandos:
 
-Open `/artists.html`. For each artist, paste a Spotify share link (in Spotify: Share › Copy link) and save. The swipe cards and recommendations then play it inline. You can also add new artists and gigs there.
-
-## Structure
-
-```
-server.js           Express API + static files
-db.js               SQLite schema (better-sqlite3)
-seed.js             Demo users, artists, venues, gigs, activity
-public/index.html   App shell (Discover / Live / Friends + profile)
-public/app.js       Frontend logic (vanilla JS)
-public/styles.css   Styles
-public/artists.html Artist side: add artists, gigs, Spotify links
+```bash
+npm run db:reset                        # borra la BD local y recarga los datos demo
+npm run import:artists -- artistas.csv  # importa artistas reales (ver abajo)
+npm run radar                           # busca artistas emergentes desde la terminal
+npm run build                           # revisa tipos y genera dist/
 ```
 
-## Data model
+> Si npm te dice que bloqueó scripts de instalación (`allowScripts`), ya están aprobados en `package.json` los que hacen falta (`esbuild`).
 
-| Table | Purpose |
-|---|---|
-| users | Demo listeners (no passwords; pick one at start) |
-| artists | Emerging artists, with `spotify_url` |
-| venues, gigs | Local venues and upcoming shows |
-| swipes | Save (liked = 1) or skip per user + artist |
-| checkins | User at a gig = early-fan stamp; fan # = order of check-in for that artist |
-| follows | Who follows whom |
-| recommendations | A user's shared artist + note |
+## Base de datos en Supabase
 
-## Rules in the demo
+1. Crea un proyecto en https://supabase.com (plan Free). Región: la más cercana (por ejemplo `us-east` o `us-west`).
+2. **SQL Editor › New query**: pega todo `supabase/schema.sql` y dale **Run**.
+3. Otra query: pega `supabase/seed.sql` y **Run** (carga usuarios, artistas, venues y tocadas demo; las fechas quedan relativas a hoy, así que vuelve a correrlo antes de presentar).
+4. **Connect** (botón arriba) › **Connection string** › **Transaction pooler** (puerto `6543`). Copia la URL y cambia `[YOUR-PASSWORD]` por la contraseña de la base.
+5. Para usarla desde tu compu: copia `.env.example` a `.env` y pega la URL en `DATABASE_URL`.
 
-- Daily challenge: 5 artists per day. Then a bonus round.
-- Points: skip +1, save +3, daily challenge +10, recommendation +5, check-in +25.
-- Badges: First save, Daily digger, Front row, Tastemaker (3 recommendations).
-- Check-in works anytime. A real version would verify location or scan a QR code at the venue.
+Las tablas tienen RLS activado sin políticas: nadie puede leerlas con la llave pública de Supabase; solo el backend, que se conecta con la URL de la base.
+
+## Importar artistas reales
+
+Exporta tu tabla como CSV. Columnas (en inglés o español, en cualquier orden; solo el nombre es obligatorio):
+
+```csv
+nombre,genero,ciudad,descripcion,spotify
+Ed Maverick,Folk,Chihuahua,Canciones íntimas desde Chihuahua,https://open.spotify.com/artist/...
+```
+
+```bash
+npm run import:artists -- artistas.csv --replace --demo-gigs
+```
+
+- Busca cada nombre en Deezer: si coincide, agrega foto, número de fans y preview de 30 s.
+- `--replace` borra los artistas demo (y sus tocadas, swipes y recomendaciones).
+- `--demo-gigs` crea una tocada próxima por artista en los venues existentes, para que la pestaña Live no quede vacía.
+- Escribe en Supabase si `.env` tiene `DATABASE_URL`; si no, en la BD local.
+
+## Deploy en Netlify
+
+1. Sube el repo a GitHub.
+2. En Netlify: **Add new project › Import an existing project** › elige el repo. La configuración ya está en `netlify.toml` (build `npm run build`, publica `dist/`, funciones en `netlify/functions/`).
+3. **Project configuration › Environment variables**:
+   - `DATABASE_URL`: la URL del Transaction pooler de Supabase.
+   - `ADMIN_KEY`: una contraseña cualquiera para la página `/artists` (escríbela ahí en el campo *Admin key*).
+4. Deploy. La API queda en `https://tu-sitio.netlify.app/api/...` y el radar corre solo cada lunes.
 
 ## API
 
-`x-user-id` header = demo login.
+Header `x-user-id` = usuario demo. Las rutas marcadas con 🔑 piden `x-admin-key` si `ADMIN_KEY` está configurada.
 
-| Method | Path | |
+| Método | Ruta | |
 |---|---|---|
-| GET | /api/users | Demo accounts |
-| GET | /api/me | Current user, points, today's progress |
-| GET | /api/users/:id | Profile: stats, badges, stamps, saved artists |
-| GET | /api/people?q= | Search people |
-| POST/DELETE | /api/follows/:id | Follow / unfollow |
-| GET | /api/discover | Next unswiped artists |
+| GET | /api/health | Estado y tipo de base de datos |
+| GET | /api/users | Cuentas demo |
+| GET | /api/me | Usuario actual, puntos, progreso del día |
+| GET | /api/users/:id | Perfil: stats, badges, sellos, guardados |
+| GET | /api/people?q= | Buscar personas |
+| POST/DELETE | /api/follows/:id | Seguir / dejar de seguir |
+| GET | /api/discover | Siguientes artistas sin deslizar |
 | POST | /api/swipes | `{ artistId, liked }` |
-| GET | /api/gigs?saved=1 | Upcoming gigs (optionally only saved artists) |
-| POST | /api/gigs/:id/checkin | Check in, returns fan number |
-| GET | /api/feed | Friends' saves, recommendations and stamps |
+| GET | /api/artists/:id/preview | Preview de 30 s (Deezer) |
+| GET | /api/gigs?saved=1 | Próximas tocadas |
+| POST | /api/gigs/:id/checkin | Check-in, regresa número de fan |
+| GET | /api/feed | Actividad de amigos |
 | POST | /api/recommendations | `{ artistId, note }` |
-| GET/POST/PATCH | /api/artists | Artist side |
-| GET | /api/venues | Venues |
-| POST | /api/gigs | `{ artistId, venueId, startsAt, price }` |
+| GET | /api/artists?status= | `approved` (default), `pending`, `rejected` |
+| POST 🔑 | /api/artists | Nuevo artista (se vincula a Deezer si el nombre coincide) |
+| PATCH 🔑 | /api/artists/:id | `spotify_url`, `status`, `genre`, `city`, `bio` |
+| GET / POST 🔑 | /api/venues | Venues |
+| POST 🔑 | /api/gigs | `{ artistId, venueId, startsAt, price }` |
+| POST 🔑 | /api/radar | `{ seeds?, maxFans? }` busca artistas emergentes |
 
-## Not in the MVP yet
+## Reglas del demo
 
-Real accounts, location-verified check-ins, ticket sales, venue dashboard, taste-based ranking (Discover is random for now).
+- Puntos: skip +1, save +3, reto diario +10, recomendación +5, check-in +25.
+- Badges: First save, Daily digger, Front row, Tastemaker (3 recomendaciones).
+- El check-in funciona en cualquier momento. Una versión real verificaría ubicación o un QR en el venue.
+
+## Todavía no está en el MVP
+
+Cuentas reales (login con Spotify / Apple Music, ver `docs/investigacion.md`), check-ins verificados, venta de boletos, panel para venues, ranking por gustos (Discover es aleatorio).

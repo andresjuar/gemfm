@@ -1,2 +1,9 @@
 node_modules/
+dist/
+.pglite/
+.netlify/
+.env
+.env.*
+!.env.example
+*.log
 data.sqlite*

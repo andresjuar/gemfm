@@ -202,3 +202,45 @@ input, select, textarea {
 @media (prefers-reduced-motion: reduce) {
   .card, .bar > div { transition: none; }
 }
+
+/* ---------- Added in the React version ---------- */
+#root { min-height: 100%; }
+a { color: var(--accent); }
+a.btn { text-decoration: none; color: var(--text); }
+.avatar-btn { border: 0; padding: 0; background: none; border-radius: 50%; }
+.avatar { flex: none; }
+.stack { display: flex; flex-direction: column; gap: 10px; }
+.center { text-align: center; }
+.m0 { margin: 0; }
+.mt4 { margin-top: 4px; }
+.wrap { flex-wrap: wrap; }
+.grow { flex: 1; min-width: 0; }
+.error { color: #FF9C9C; margin: 0; }
+.wide-bottom { padding-bottom: 32px; }
+.brand-sub { font-family: var(--body); font-weight: 600; letter-spacing: 0; }
+.btn.person { display: flex; justify-content: space-between; align-items: center; width: 100%; border-radius: 16px; padding: 10px 14px; text-align: left; }
+
+.card-art.photo { background-size: cover; background-position: center; }
+.card-art.photo::after { display: none; }
+.date { background-size: cover; background-position: center; color: var(--text); }
+
+/* Deezer 30-second preview */
+.preview {
+  display: grid; grid-template-columns: 48px 1fr; gap: 12px; align-items: center;
+  background: var(--surface-2); border-radius: 14px; padding: 10px 12px;
+}
+.preview.loading { display: block; color: var(--muted); font-size: 14px; }
+.preview .play {
+  width: 48px; height: 48px; border-radius: 50%; border: 0;
+  background: var(--accent); color: var(--accent-ink); display: grid; place-items: center;
+}
+.preview-info { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.preview-title { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.preview-info a { text-decoration: none; }
+.bar.thin { height: 4px; }
+.bar.thin > div { transition: none; }
+
+/* Artists page */
+.thumb { width: 56px; height: 56px; border-radius: 12px; object-fit: cover; flex: none; }
+details summary { cursor: pointer; }
+input[type="range"] { padding: 0; accent-color: var(--accent); background: none; border: 0; }
