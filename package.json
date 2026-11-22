@@ -1,0 +1,22 @@
+{
+  "name": "gemfm-mvp",
+  "version": "1.0.0",
+  "description": "gem.fm MVP: discover emerging artists, go to their gigs, share with friends",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "reset": "node seed.js --force"
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "better-sqlite3": "^12.11.1",
+    "express": "^4.21.2"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "allowScripts": {
+    "better-sqlite3@12.11.1": true
+  }
+}
