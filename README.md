@@ -55,6 +55,7 @@ Otros comandos:
 npm run db:reset                        # borra la BD local y recarga los datos demo
 npm run import:artists -- artistas.csv  # importa artistas reales (ver abajo)
 npm run radar                           # busca artistas emergentes desde la terminal
+npm run gigs:reset-dates                # mueve las tocadas a las próximas dos semanas (con DATABASE_URL: agrega -- --yes)
 npm run build                           # revisa tipos y genera dist/
 ```
 
@@ -136,6 +137,7 @@ npm run import:artists -- data/artists.csv --replace --demo-gigs --demo-activity
 3. **Project configuration › Environment variables**:
    - `DATABASE_URL`: la URL del Transaction pooler de Supabase.
    - `ADMIN_KEY`: una contraseña cualquiera para la página `/admin` (escríbela ahí en el campo *Admin key*).
+   - `DEMO_LOGIN` (opcional): ponla en `off` para quitar el acceso demo y volver a correo + contraseña.
 4. Deploy. La API queda en `https://tu-sitio.netlify.app/api/...` y el radar corre solo cada lunes.
 
 ## API
@@ -148,6 +150,8 @@ La sesión va en una cookie httpOnly (`gemfm_session`) que pone `/api/auth/*`. L
 | POST | /api/auth/signup | `{ name, handle, email, password }` crea la cuenta e inicia sesión |
 | POST | /api/auth/login | `{ login, password }` (login = correo o usuario) |
 | POST | /api/auth/logout | Cierra la sesión |
+| GET | /api/auth/mode | `{ demo }`: si la app muestra el acceso demo |
+| POST | /api/auth/demo | `{ username }` entra o crea una cuenta demo (solo con `DEMO_LOGIN` activo) |
 | GET | /api/me | Usuario actual, gustos, puntos, progreso del día |
 | GET | /api/tags | Etiquetas de gustos y cuántos artistas tiene cada una |
 | PUT | /api/me/tags | `{ tags: ["indie", "folk"] }` guarda los gustos |
@@ -157,7 +161,7 @@ La sesión va en una cookie httpOnly (`gemfm_session`) que pone `/api/auth/*`. L
 | GET | /api/discover | Siguientes artistas sin deslizar, primero los de tus gustos |
 | POST | /api/swipes | `{ artistId, liked }` |
 | GET | /api/artists/:id/preview | Preview de 30 s (Deezer) |
-| GET | /api/gigs?saved=1 | Próximas tocadas |
+| GET | /api/gigs?saved=1 | Próximas tocadas (sin `saved`: todas, las usa el calendario) |
 | POST | /api/gigs/:id/checkin | Check-in, regresa número de fan |
 | GET | /api/feed | Publicaciones (recomendaciones, guardados, check-ins) con likes y comentarios; `following` separa tu feed de las sugeridas |
 | GET | /api/people/suggested | Gente que todavía no sigues |
@@ -178,6 +182,21 @@ La sesión va en una cookie httpOnly (`gemfm_session`) que pone `/api/auth/*`. L
 Los usuarios de `seed.sql` (Andrés, Ximena, Diego, Sofía, Mateo, Valeria) no tienen correo ni contraseña: **nadie puede entrar con ellos**. Solo existen como gente a la que seguir, con publicaciones, likes y comentarios para que el feed no esté vacío.
 
 Las contraseñas se guardan con scrypt (nunca en texto) y la sesión dura 30 días.
+
+## Modo demo (día de presentación)
+
+Mientras `DEMO_LOGIN` no sea `off`, la app abre con un acceso de **solo nombre de usuario**, marcado como *Demo*, para que un auditorio la pruebe rápido:
+
+- Escribes un usuario (por ejemplo "Ana López" → `@ana_lopez`) y entras. Si no existe se crea una cuenta demo (`users.demo = true`, sin correo ni contraseña).
+- Quien escriba el mismo usuario entra a la misma cuenta demo. Las cuentas con contraseña y los usuarios de `seed.sql` no se pueden tomar así.
+- El encabezado y el perfil muestran la etiqueta **Demo**. El formulario de correo y contraseña sigue a un toque ("Entra con tu correo").
+- Para borrar las cuentas demo después: `delete from users where demo;` en el SQL Editor de Supabase (borra también sus swipes, check-ins y comentarios).
+
+Antes de presentar, `npm run gigs:reset-dates -- --yes` pone tres tocadas hoy (una patrocinada, para la Noche destacada) y reparte el resto en las dos semanas siguientes.
+
+## Idioma
+
+Perfil › ⚙️ Configuración › Idioma cambia la app entre inglés y español al instante y se recuerda en ese navegador. La primera vez usa el idioma del teléfono. Los textos están en `src/i18n-es.ts` (llave = texto en inglés). Las páginas `/admin`, `/artist` y `/venues` siguen en inglés.
 
 ## Reglas del demo
 

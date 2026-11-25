@@ -5,6 +5,7 @@ import { ArtistLanding } from './landing/ArtistLanding';
 import { VenueLanding } from './landing/VenueLanding';
 import { watchNetlifyBadge } from './lib/netlifyBadge';
 import { AdminPage } from './screens/AdminPage';
+import { LangProvider } from './i18n';
 import { UiProvider } from './ui';
 import './styles.css';
 import './landing/landing.css';
@@ -23,6 +24,8 @@ watchNetlifyBadge();
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <UiProvider>{page}</UiProvider>
+    <LangProvider>
+      <UiProvider>{page}</UiProvider>
+    </LangProvider>
   </StrictMode>,
 );

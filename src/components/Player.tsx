@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { Preview } from '../../shared/types';
 import { api } from '../api';
+import { useT } from '../i18n';
 import { spotifyEmbed } from '../lib/format';
 
 interface Props {
@@ -13,6 +14,7 @@ interface Props {
 }
 
 export function Player({ artistId, spotifyUrl, deezerId, autoPlay = false }: Props) {
+  const t = useT();
   const embed = spotifyEmbed(spotifyUrl);
   if (embed) {
     return (
@@ -21,7 +23,7 @@ export function Player({ artistId, spotifyUrl, deezerId, autoPlay = false }: Pro
     );
   }
   if (deezerId) return <PreviewPlayer artistId={artistId} autoPlay={autoPlay} />;
-  return <div className="no-audio">No music linked yet.</div>;
+  return <div className="no-audio">{t('No music linked yet.')}</div>;
 }
 
 // Remember that the person already pressed play once, so the next cards can start on their own
@@ -29,6 +31,7 @@ export function Player({ artistId, spotifyUrl, deezerId, autoPlay = false }: Pro
 let userStartedAudio = false;
 
 function PreviewPlayer({ artistId, autoPlay }: { artistId: number; autoPlay: boolean }) {
+  const t = useT();
   const [preview, setPreview] = useState<Preview | null | undefined>(undefined);
   const [playing, setPlaying] = useState(false);
   const [progress, setProgress] = useState(0);
@@ -47,8 +50,8 @@ function PreviewPlayer({ artistId, autoPlay }: { artistId: number; autoPlay: boo
     if (preview && autoPlay && userStartedAudio) audio.current?.play().catch(() => {});
   }, [preview, autoPlay]);
 
-  if (preview === undefined) return <div className="preview loading" aria-busy="true">Loading preview…</div>;
-  if (!preview) return <div className="no-audio">No preview available for this artist.</div>;
+  if (preview === undefined) return <div className="preview loading" aria-busy="true">{t('Loading preview…')}</div>;
+  if (!preview) return <div className="no-audio">{t('No preview available for this artist.')}</div>;
 
   const toggle = () => {
     const el = audio.current;
@@ -60,7 +63,7 @@ function PreviewPlayer({ artistId, autoPlay }: { artistId: number; autoPlay: boo
 
   return (
     <div className="preview">
-      <button type="button" className="play" onClick={toggle} aria-label={playing ? 'Pause preview' : 'Play preview'}>
+      <button type="button" className="play" onClick={toggle} aria-label={playing ? t('Pause preview') : t('Play preview')}>
         {playing
           ? <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M7 5h4v14H7zM13 5h4v14h-4z" fill="currentColor" /></svg>
           : <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M8 5v14l11-7z" fill="currentColor" /></svg>}
@@ -68,7 +71,7 @@ function PreviewPlayer({ artistId, autoPlay }: { artistId: number; autoPlay: boo
       <div className="preview-info">
         <span className="small preview-title">{preview.title}</span>
         <div className="bar thin"><div style={{ width: `${progress * 100}%` }} /></div>
-        <a className="small muted" href={preview.link} target="_blank" rel="noreferrer">30-second preview · Deezer</a>
+        <a className="small muted" href={preview.link} target="_blank" rel="noreferrer">{t('30-second preview · Deezer')}</a>
       </div>
       <audio
         ref={audio}

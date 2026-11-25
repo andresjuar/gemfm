@@ -419,3 +419,45 @@ input[type="range"] { padding: 0; accent-color: var(--accent); background: none;
   .card-art { aspect-ratio: 16 / 10; }
   .card-art h3 { font-size: 28px; }
 }
+
+/* Demo day: username-only sign-in, clearly labelled */
+.demo-pill {
+  display: inline-block; padding: 2px 9px; border-radius: 999px;
+  background: var(--sponsor, #F2C94C); color: var(--sponsor-ink, #1A1406);
+  font-size: 11px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; vertical-align: middle;
+}
+.demo-note {
+  display: flex; flex-direction: column; gap: 6px; padding: 14px 16px; border-radius: 16px;
+  border: 1px dashed var(--sponsor, #F2C94C); background: color-mix(in srgb, var(--sponsor, #F2C94C) 8%, var(--surface));
+}
+.demo-note .demo-pill { align-self: flex-start; }
+.brand-row { gap: 8px; }
+.settings-btn { color: var(--muted); }
+
+/* Live: calendar of upcoming gigs */
+.cal-btn { display: inline-flex; align-items: center; gap: 6px; flex-shrink: 0; }
+.cal { background: var(--surface); border: 1px solid var(--line); border-radius: 18px; padding: 10px 10px 12px; }
+.cal-head { display: flex; align-items: center; justify-content: space-between; }
+.cal-head .icon-btn { font-size: 24px; line-height: 1; width: 40px; height: 40px; padding: 0; }
+.cal-head .icon-btn:disabled { opacity: .3; cursor: default; }
+.cal-title { display: inline-block; }
+.cal-title::first-letter { text-transform: uppercase; }
+.cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; margin-top: 6px; }
+.cal-wd { text-align: center; font-size: 12px; font-weight: 700; color: var(--muted); text-transform: uppercase; padding-bottom: 2px; }
+.cal-day {
+  position: relative; aspect-ratio: 1; min-height: 38px; border: 0; border-radius: 12px; background: transparent;
+  display: grid; place-items: center; font-weight: 600; color: var(--text); padding: 0;
+}
+.cal-day.past { color: color-mix(in srgb, var(--muted) 55%, transparent); }
+.cal-day.has { background: var(--surface-2); }
+.cal-day.today { box-shadow: inset 0 0 0 2px var(--line); }
+.cal-day.on { background: var(--accent); color: var(--accent-ink); }
+.cal-day i {
+  position: absolute; bottom: 4px; left: 50%; transform: translateX(-50%);
+  min-width: 6px; height: 6px; border-radius: 999px; background: var(--accent);
+  font-style: normal; font-size: 0;
+}
+.cal-day.on i { background: var(--accent-ink); }
+.cal-gig { display: flex; gap: 12px; align-items: flex-start; padding: 12px; border-radius: 14px; background: var(--surface); border: 1px solid var(--line); }
+.cal-time { font-weight: 800; min-width: 64px; color: var(--accent); }
+.cal-gig .btn { flex-shrink: 0; }

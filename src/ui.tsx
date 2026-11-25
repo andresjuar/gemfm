@@ -1,4 +1,5 @@
 // App-wide UI helpers: toast messages and the bottom sheet.
+import { t } from './i18n';
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 
 interface Ui {
@@ -54,7 +55,7 @@ export function UiProvider({ children }: { children: ReactNode }) {
 }
 
 /** Sheets are rendered outside the screen that opened them; this lets them use the UI helpers too. */
-export function SheetCloseButton({ children = 'Done', primary = false }: { children?: ReactNode; primary?: boolean }) {
+export function SheetCloseButton({ children, primary = false }: { children?: ReactNode; primary?: boolean }) {
   const { closeSheet } = useUi();
-  return <button className={`btn ${primary ? 'primary' : ''}`} onClick={closeSheet}>{children}</button>;
+  return <button className={`btn ${primary ? 'primary' : ''}`} onClick={closeSheet}>{children ?? t('Done')}</button>;
 }

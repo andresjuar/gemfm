@@ -16,7 +16,9 @@ import { findPhoto, hasRealPicture, matchDeezer, spotifyThumbnail } from './lib/
 import { runRadar } from './lib/radar';
 
 const DAILY_GOAL = 5;
-const USER_COLS = 'id, name, handle, color, tags';
+const USER_COLS = 'id, name, handle, color, tags, demo';
+// Demo day: sign in with just a username. Set DEMO_LOGIN=off to go back to email + password only.
+const DEMO_LOGIN = process.env.DEMO_LOGIN !== 'off';
 // "Today" for the daily challenge, in the city the app is about.
 const TZ = process.env.APP_TIMEZONE || 'America/Mexico_City';
 
@@ -158,6 +160,32 @@ app.post('/auth/login', async (c) => {
   if (!row || !ok) fail(401, 'Wrong email/username or password.');
   await startSession(c, row.id);
   const [user] = await db.query<User>(`select ${USER_COLS} from users where id = $1`, [row.id]);
+  return c.json(user);
+});
+
+// Which sign-in the app should show.
+app.get('/auth/mode', (c) => c.json({ demo: DEMO_LOGIN }));
+
+// Demo day only: type a username and you're in. A new username creates a demo
+// account; an existing demo username signs back into it. Accounts with a
+// password and the seed users can't be entered this way.
+app.post('/auth/demo', async (c) => {
+  if (!DEMO_LOGIN) fail(403, 'Demo sign-in is turned off. Sign in with your email and password.');
+  const b = await c.req.json<{ username?: string }>();
+  const raw = (b.username ?? '').trim().replace(/^@/, '');
+  // "Ana López" -> handle "ana_lopez", name "Ana López".
+  const handle = raw.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
+    .replace(/\s+/g, '_').replace(/[^a-z0-9._]/g, '').slice(0, 20);
+  if (!HANDLE_RE.test(handle)) fail(400, 'Pick a username with at least 3 letters or numbers.');
+  const name = raw.replace(/\s+/g, ' ').slice(0, 40);
+  const db = await getDb();
+  const [row] = await db.query<{ id: number; demo: boolean }>('select id, demo from users where lower(handle) = $1', [handle]);
+  if (row && !row.demo) fail(409, 'That username is taken. Try another one.');
+  const [user] = row
+    ? await db.query<User>(`select ${USER_COLS} from users where id = $1`, [row.id])
+    : await db.query<User>(`insert into users (name, handle, color, demo) values ($1, $2, $3, true) returning ${USER_COLS}`,
+      [name.length >= 2 ? name : handle, handle, randomAvatarColor()]);
+  await startSession(c, user.id);
   return c.json(user);
 });
 

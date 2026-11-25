@@ -4,6 +4,7 @@ import { ApiError, api } from './api';
 import { Avatar } from './components/Avatar';
 import { Logo } from './components/Logo';
 import { useSecretMenu } from './components/SecretMenu';
+import { useT } from './i18n';
 import { TagPicker } from './components/TagPicker';
 import { Discover } from './screens/Discover';
 import { Friends } from './screens/Friends';
@@ -30,6 +31,7 @@ export interface AppActions {
 type Status = 'loading' | 'signed-out' | 'signed-in' | 'offline';
 
 export function App() {
+  const t = useT();
   const { openSheet, closeSheet, toast } = useUi();
   const [me, setMe] = useState<Me | null>(null);
   const [status, setStatus] = useState<Status>('loading');
@@ -73,8 +75,8 @@ export function App() {
     closeSheet();
     setMe(null);
     setStatus('signed-out');
-    toast('Signed out');
-  }, [closeSheet, toast]);
+    toast(t('Signed out'));
+  }, [closeSheet, toast, t]);
 
   const go = (next: Tab, userId: number | null = null) => {
     setTab(next);
@@ -92,8 +94,8 @@ export function App() {
     return (
       <div className="splash">
         <Logo size={40} />
-        <p className="muted">Can’t reach gem.fm right now.</p>
-        <button className="btn" onClick={() => window.location.reload()}>Try again</button>
+        <p className="muted">{t('Can’t reach gem.fm right now.')}</p>
+        <button className="btn" onClick={() => window.location.reload()}>{t('Try again')}</button>
       </div>
     );
   }
@@ -112,10 +114,13 @@ export function App() {
   return (
     <div className="app">
       <header className="top">
-        <button className="brand-btn" aria-label="gem.fm home" {...secret}><Logo size={24} /></button>
+        <div className="row brand-row">
+          <button className="brand-btn" aria-label={t('gem.fm home')} {...secret}><Logo size={24} /></button>
+          {me.demo && <span className="demo-pill" title={t('Demo account, made for today’s demo.')}>{t('Demo')}</span>}
+        </div>
         <div className="top-right">
-          <span className="points" aria-label="Your points">{me.stats.points} pts</span>
-          <button className="avatar-btn" aria-label="My profile" onClick={() => go('profile', me.id)}>
+          <span className="points" aria-label={t('Your points')}>{me.stats.points} pts</span>
+          <button className="avatar-btn" aria-label={t('My profile')} onClick={() => go('profile', me.id)}>
             <Avatar name={me.name} color={me.color} />
           </button>
         </div>
@@ -128,11 +133,11 @@ export function App() {
         {tab === 'profile' && <Profile {...actions} userId={profileId ?? me.id} />}
       </main>
 
-      <nav className="tabs" aria-label="Main">
-        {TABS.map((t) => (
-          <button key={t.id} className={`tab ${tab === t.id ? 'active' : ''}`} aria-current={tab === t.id ? 'page' : undefined}
-            onClick={() => go(t.id)}>
-            {t.label}
+      <nav className="tabs" aria-label={t('Main')}>
+        {TABS.map((tb) => (
+          <button key={tb.id} className={`tab ${tab === tb.id ? 'active' : ''}`} aria-current={tab === tb.id ? 'page' : undefined}
+            onClick={() => go(tb.id)}>
+            {t(tb.label)}
           </button>
         ))}
       </nav>

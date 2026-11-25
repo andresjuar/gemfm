@@ -4,6 +4,7 @@
 import { useRef, type PointerEvent } from 'react';
 import { SheetCloseButton, useUi } from '../ui';
 import { GemMark } from './Logo';
+import { useT } from '../i18n';
 
 const TAPS = 5;
 const TAP_WINDOW_MS = 2500;
@@ -41,22 +42,23 @@ export function useSecretMenu(onSingleTap?: () => void) {
 }
 
 function BusinessMenu() {
+  const t = useT();
   return (
     <>
-      <div className="row"><GemMark size={36} /><p className="eyebrow m0">gem.fm for business</p></div>
-      <h2>Behind the scenes</h2>
-      <nav className="stack" aria-label="Business pages">
+      <div className="row"><GemMark size={36} /><p className="eyebrow m0">{t('gem.fm for business')}</p></div>
+      <h2>{t('Behind the scenes')}</h2>
+      <nav className="stack" aria-label={t('Business pages')}>
         <a className="biz-link" href="/artist">
-          <b>For artists</b><span className="small muted">Promotion landing and application form</span>
+          <b>{t('For artists')}</b><span className="small muted">{t('Promotion landing and application form')}</span>
         </a>
         <a className="biz-link" href="/venues">
-          <b>For venues</b><span className="small muted">Sign up a venue for the Live tab</span>
+          <b>{t('For venues')}</b><span className="small muted">{t('Sign up a venue for the Live tab')}</span>
         </a>
         <a className="biz-link" href="/admin">
-          <b>Admin</b><span className="small muted">Artists, radar, gigs, venues and applications</span>
+          <b>Admin</b><span className="small muted">{t('Artists, radar, gigs, venues and applications')}</span>
         </a>
       </nav>
-      <SheetCloseButton>Close</SheetCloseButton>
+      <SheetCloseButton>{t('Close')}</SheetCloseButton>
     </>
   );
 }

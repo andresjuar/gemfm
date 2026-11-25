@@ -7,6 +7,8 @@ export interface User {
   color: string;
   /** Slugs of the taste tags the user picked. */
   tags: string[];
+  /** Created with the demo-day username sign-in (no password). */
+  demo?: boolean;
 }
 
 export interface Tag {

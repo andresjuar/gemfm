@@ -13,7 +13,8 @@
     "typecheck": "tsc -p tsconfig.json",
     "db:reset": "tsx --env-file-if-exists=.env scripts/reset-local-db.ts",
     "import:artists": "tsx --env-file-if-exists=.env scripts/import-artists.ts",
-    "radar": "tsx --env-file-if-exists=.env scripts/radar.ts"
+    "radar": "tsx --env-file-if-exists=.env scripts/radar.ts",
+    "gigs:reset-dates": "tsx --env-file-if-exists=.env scripts/reset-gig-dates.ts"
   },
   "engines": {
     "node": ">=20"

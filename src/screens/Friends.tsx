@@ -7,11 +7,13 @@ import { api } from '../api';
 import { ArtistImage } from '../components/ArtistImage';
 import { Avatar } from '../components/Avatar';
 import { Player } from '../components/Player';
+import { getLang, t as tr, useT } from '../i18n';
 import { ago, initial, plural } from '../lib/format';
 import { useLoad } from '../lib/useLoad';
 import { SheetCloseButton, useUi } from '../ui';
 
 export function Friends(props: AppActions) {
+  const t = useT();
   const { me, refreshMe } = props;
   const { toast, openSheet } = useUi();
   const [posts, setPosts] = useState<FeedItem[] | null>(null);
@@ -48,14 +50,14 @@ export function Friends(props: AppActions) {
       await api('/swipes', 'POST', { artistId: post.artist_id, liked: !post.saved });
       patchPosts((p) => p.artist_id === post.artist_id, { saved: !post.saved });
       await refreshMe();
-      toast(post.saved ? `Removed ${post.artist} from your saves` : `Saved ${post.artist} · +3 pts`);
+      toast(post.saved ? t('Removed {name} from your saves', { name: post.artist }) : t('Saved {name} · +3 pts', { name: post.artist }));
     } catch (err) {
       toast((err as Error).message);
     }
   };
 
   if (error) return <div className="panel empty">{error}</div>;
-  if (!posts) return <div className="panel empty" aria-busy="true">Loading your feed…</div>;
+  if (!posts) return <div className="panel empty" aria-busy="true">{t('Loading your feed…')}</div>;
 
   const mine = posts.filter((p) => p.following);
   const more = posts.filter((p) => !p.following);
@@ -64,10 +66,10 @@ export function Friends(props: AppActions) {
   return (
     <>
       <div className="row between feed-pad">
-        <h2>Friends</h2>
+        <h2>{t('Friends')}</h2>
         <div className="row">
-          <button className="btn small" onClick={() => openSheet(<ShareSheet me={me} onShared={load} />)}>Share</button>
-          <button className="btn small" onClick={() => openSheet(<FindPeople onChange={load} />)}>Find people</button>
+          <button className="btn small" onClick={() => openSheet(<ShareSheet me={me} onShared={load} />)}>{t('Share')}</button>
+          <button className="btn small" onClick={() => openSheet(<FindPeople onChange={load} />)}>{t('Find people')}</button>
         </div>
       </div>
 
@@ -75,19 +77,19 @@ export function Friends(props: AppActions) {
 
       {mine.length === 0 && (
         <div className="panel empty feed-pad">
-          <p className="m0"><b>Your feed is empty.</b></p>
-          <p className="small m0">Follow people above or from the posts below to see what they discover.</p>
+          <p className="m0"><b>{t('Your feed is empty.')}</b></p>
+          <p className="small m0">{t('Follow people above or from the posts below to see what they discover.')}</p>
         </div>
       )}
       {mine.map((p) => <Post key={p.key} post={p} {...postProps} />)}
 
       {more.length > 0 && (
         <>
-          <div className="feed-divider feed-pad"><span className="eyebrow">Suggested posts</span></div>
+          <div className="feed-divider feed-pad"><span className="eyebrow">{t('Suggested posts')}</span></div>
           {more.map((p) => <Post key={p.key} post={p} {...postProps} />)}
         </>
       )}
-      {mine.length > 0 && more.length === 0 && <p className="small muted center">You’re all caught up.</p>}
+      {mine.length > 0 && more.length === 0 && <p className="small muted center">{t('You’re all caught up.')}</p>}
     </>
   );
 }
@@ -98,9 +100,10 @@ function Suggestions({ people, follow, showProfile }: {
   follow: (id: number, on: boolean) => void;
   showProfile: (id: number) => void;
 }) {
+  const t = useT();
   return (
-    <section aria-label="People to follow">
-      <div className="row between feed-pad"><span className="eyebrow">Suggested for you</span></div>
+    <section aria-label={t('People to follow')}>
+      <div className="row between feed-pad"><span className="eyebrow">{t('Suggested for you')}</span></div>
       <div className="people-strip">
         {people.map((p) => (
           <div key={p.id} className="person-card">
@@ -110,10 +113,10 @@ function Suggestions({ people, follow, showProfile }: {
               <span className="small muted">@{p.handle}</span>
             </button>
             <span className="tiny muted">
-              {p.mutual ? `${plural(p.mutual, 'friend')} in common` : p.posts ? plural(p.posts, 'post') : 'New here'}
+              {p.mutual ? plural(p.mutual, '{n} friend in common', '{n} friends in common') : p.posts ? plural(p.posts, '{n} post', '{n} posts') : t('New here')}
             </span>
             <button className={`btn small ${p.following ? '' : 'primary'}`} onClick={() => follow(p.id, !p.following)}>
-              {p.following ? 'Following' : 'Follow'}
+              {p.following ? t('Following') : t('Follow')}
             </button>
           </div>
         ))}
@@ -132,8 +135,15 @@ type PostProps = AppActions & {
 
 const VERB = { rec: 'recommends', save: 'saved', checkin: 'got an early-fan stamp for' } as const;
 const BADGE = { rec: 'Recommendation', save: 'Saved', checkin: 'Early fan' } as const;
+// When the post is yours the verb changes: "You recommend" / "Tú recomiendas".
+const VERB_ME = {
+  en: { rec: 'recommend', save: 'saved', checkin: 'got an early-fan stamp for' },
+  es: { rec: 'recomiendas a', save: 'guardaste a', checkin: 'obtuviste un sello de early fan de' },
+} as const;
+const verb = (type: keyof typeof VERB, isMe: boolean) => (isMe ? VERB_ME[getLang()][type] : tr(VERB[type]));
 
 function Post({ post: p, me, follow, saveArtist, onChange, showProfile }: PostProps) {
+  const t = useT();
   const { toast } = useUi();
   const [showPlayer, setShowPlayer] = useState(false);
   const [allComments, setAllComments] = useState<PostComment[] | null>(null);
@@ -189,40 +199,40 @@ function Post({ post: p, me, follow, saveArtist, onChange, showProfile }: PostPr
     : { background: `linear-gradient(150deg, ${p.color}, #120E1A 140%)` };
 
   return (
-    <article className="post" aria-label={`${p.user} ${VERB[p.type]} ${p.artist}`}>
+    <article className="post" aria-label={`${isMe ? t('You') : p.user} ${verb(p.type, isMe)} ${p.artist}`}>
       <header className="post-head">
         <button className="linkish row" onClick={() => showProfile(p.user_id)}>
           <span className="ring"><Avatar name={p.user} color={p.user_color} size={34} /></span>
           <span className="post-who">
-            <b>{isMe ? 'You' : p.user}</b>
+            <b>{isMe ? t('You') : p.user}</b>
             <span className="tiny muted">@{p.handle} · {ago(p.at)}</span>
           </span>
         </button>
         {!isMe && !p.following && (
-          <button className="btn small primary" onClick={() => follow(p.user_id, true)}>Follow</button>
+          <button className="btn small primary" onClick={() => follow(p.user_id, true)}>{t('Follow')}</button>
         )}
       </header>
 
       <div className={`post-media ${p.image_url ? 'photo' : ''}`} style={media} onDoubleClick={doubleTap}>
         {!p.image_url && <span className="post-initial" aria-hidden="true">{initial(p.artist)}</span>}
-        <span className={`post-badge ${p.type}`}>{BADGE[p.type]}{p.type === 'checkin' && p.venue ? ` · ${p.venue}` : ''}</span>
+        <span className={`post-badge ${p.type}`}>{t(BADGE[p.type])}{p.type === 'checkin' && p.venue ? ` · ${p.venue}` : ''}</span>
         <div className="post-media-text">
           <h3>{p.artist}</h3>
-          {(p.genre || p.city) && <span className="small">{[p.genre, p.city].filter(Boolean).join(' · ')}</span>}
+          {(p.genre || p.city) && <span className="small">{[p.genre && t(p.genre), p.city].filter(Boolean).join(' · ')}</span>}
         </div>
         {burst && <span className="heart-burst" aria-hidden="true"><HeartIcon filled size={96} /></span>}
       </div>
 
       <div className="post-actions">
-        <button className={`icon-btn ${p.liked ? 'liked' : ''}`} aria-pressed={p.liked} aria-label={p.liked ? 'Unlike' : 'Like'} onClick={() => toggleLike()}>
+        <button className={`icon-btn ${p.liked ? 'liked' : ''}`} aria-pressed={p.liked} aria-label={p.liked ? t('Unlike') : t('Like')} onClick={() => toggleLike()}>
           <HeartIcon filled={p.liked} />
         </button>
-        <button className="icon-btn" aria-label="Comment" onClick={() => input.current?.focus()}><CommentIcon /></button>
-        <button className={`icon-btn ${showPlayer ? 'on' : ''}`} aria-pressed={showPlayer} aria-label={showPlayer ? 'Hide player' : 'Listen'}
+        <button className="icon-btn" aria-label={t('Comment')} onClick={() => input.current?.focus()}><CommentIcon /></button>
+        <button className={`icon-btn ${showPlayer ? 'on' : ''}`} aria-pressed={showPlayer} aria-label={showPlayer ? t('Hide player') : t('Listen')}
           onClick={() => setShowPlayer((s) => !s)}><PlayIcon /></button>
         <span className="grow" />
         <button className={`icon-btn ${p.saved ? 'saved' : ''}`} aria-pressed={p.saved}
-          aria-label={p.saved ? `Remove ${p.artist} from your saves` : `Save ${p.artist}`} onClick={() => saveArtist(p)}>
+          aria-label={p.saved ? t('Remove {name} from your saves', { name: p.artist }) : t('Save {name}', { name: p.artist })} onClick={() => saveArtist(p)}>
           <BookmarkIcon filled={p.saved} />
         </button>
       </div>
@@ -230,22 +240,22 @@ function Post({ post: p, me, follow, saveArtist, onChange, showProfile }: PostPr
       {showPlayer && <div className="post-player"><Player artistId={p.artist_id} spotifyUrl={p.spotify_url} deezerId={p.deezer_id} autoPlay /></div>}
 
       <div className="post-body">
-        {p.likes > 0 && <b className="small">{plural(p.likes, 'like')}</b>}
+        {p.likes > 0 && <b className="small">{plural(p.likes, '{n} like', '{n} likes')}</b>}
         <p className="m0 small">
-          <b>{isMe ? 'You' : p.user}</b> {VERB[p.type]} <b>{p.artist}</b>{p.type === 'checkin' && p.venue ? ` at ${p.venue}` : ''}
+          <b>{isMe ? t('You') : p.user}</b> {verb(p.type, isMe)} <b>{p.artist}</b>{p.type === 'checkin' && p.venue ? t(' at {venue}', { venue: p.venue }) : ''}
           {p.note ? <> — {p.note}</> : null}
         </p>
         {p.comment_count > comments.length && (
-          <button className="linkish small muted" onClick={viewAll}>View all {p.comment_count} comments</button>
+          <button className="linkish small muted" onClick={viewAll}>{t('View all {n} comments', { n: p.comment_count })}</button>
         )}
         {comments.map((c) => (
-          <p key={c.id} className="m0 small"><b>{c.user_id === me.id ? 'You' : c.handle}</b> {c.body}</p>
+          <p key={c.id} className="m0 small"><b>{c.user_id === me.id ? t('You') : c.handle}</b> {c.body}</p>
         ))}
         <form className="comment-form" onSubmit={send}>
           <Avatar name={me.name} color={me.color} size={26} />
           <input ref={input} value={comment} onChange={(e) => setComment(e.target.value)} maxLength={300}
-            placeholder="Add a comment…" aria-label={`Comment on ${p.user}'s post`} />
-          {comment.trim() && <button className="linkish accent small">Post</button>}
+            placeholder={t('Add a comment…')} aria-label={t('Comment on {name}’s post', { name: p.user })} />
+          {comment.trim() && <button className="linkish accent small">{t('Post')}</button>}
         </form>
       </div>
     </article>
@@ -254,6 +264,7 @@ function Post({ post: p, me, follow, saveArtist, onChange, showProfile }: PostPr
 
 // ---------- Sheets ----------
 function ShareSheet({ me, onShared }: { me: AppActions['me']; onShared: () => void }) {
+  const t = useT();
   const { toast, closeSheet } = useUi();
   const { data: profile } = useLoad(() => api<Profile>('/users/' + me.id), [me.id]);
   const [artistId, setArtistId] = useState('');
@@ -264,7 +275,7 @@ function ShareSheet({ me, onShared }: { me: AppActions['me']; onShared: () => vo
     try {
       await api('/recommendations', 'POST', { artistId: Number(artistId || profile?.saved[0]?.id), note });
       closeSheet();
-      toast('Shared with your friends · +5 pts');
+      toast(t('Shared with your friends · +5 pts'));
       onShared();
     } catch (err) {
       toast((err as Error).message);
@@ -273,9 +284,9 @@ function ShareSheet({ me, onShared }: { me: AppActions['me']; onShared: () => vo
 
   return (
     <form className="stack" onSubmit={share}>
-      <h2>Share a recommendation</h2>
-      {!profile && <p className="muted small" aria-busy="true">Loading your saved artists…</p>}
-      {profile && !profile.saved.length && <p className="muted small m0">Save an artist in Discover (or from a post) to recommend them.</p>}
+      <h2>{t('Share a recommendation')}</h2>
+      {!profile && <p className="muted small" aria-busy="true">{t('Loading your saved artists…')}</p>}
+      {profile && !profile.saved.length && <p className="muted small m0">{t('Save an artist in Discover (or from a post) to recommend them.')}</p>}
       {profile && profile.saved.length > 0 && (
         <>
           <div className="share-pick">
@@ -289,16 +300,17 @@ function ShareSheet({ me, onShared }: { me: AppActions['me']; onShared: () => vo
               );
             })}
           </div>
-          <input maxLength={200} placeholder="Why should your friends listen?" aria-label="Note" value={note} onChange={(e) => setNote(e.target.value)} />
-          <button className="btn primary">Share</button>
+          <input maxLength={200} placeholder={t('Why should your friends listen?')} aria-label={t('Note')} value={note} onChange={(e) => setNote(e.target.value)} />
+          <button className="btn primary">{t('Share')}</button>
         </>
       )}
-      <SheetCloseButton>Cancel</SheetCloseButton>
+      <SheetCloseButton>{t('Cancel')}</SheetCloseButton>
     </form>
   );
 }
 
 function FindPeople({ onChange }: { onChange: () => void }) {
+  const t = useT();
   const [q, setQ] = useState('');
   const { data: people, reload } = useLoad(() => api<Person[]>('/people?q=' + encodeURIComponent(q)), [q]);
 
@@ -310,10 +322,10 @@ function FindPeople({ onChange }: { onChange: () => void }) {
 
   return (
     <>
-      <h2>Find people</h2>
-      <input placeholder="Search by name or @username" aria-label="Search people" value={q} onChange={(e) => setQ(e.target.value)} autoFocus />
+      <h2>{t('Find people')}</h2>
+      <input placeholder={t('Search by name or @username')} aria-label={t('Search people')} value={q} onChange={(e) => setQ(e.target.value)} autoFocus />
       <div className="stack">
-        {people?.length === 0 && <p className="muted">No one matches that name.</p>}
+        {people?.length === 0 && <p className="muted">{t('No one matches that name.')}</p>}
         {people?.map((p) => (
           <div key={p.id} className="person">
             <span className="row">
@@ -321,7 +333,7 @@ function FindPeople({ onChange }: { onChange: () => void }) {
               <span>{p.name}<br /><span className="small muted">@{p.handle}</span></span>
             </span>
             <button className={`btn small ${p.following ? '' : 'primary'}`} onClick={() => toggle(p)}>
-              {p.following ? 'Following' : 'Follow'}
+              {p.following ? t('Following') : t('Follow')}
             </button>
           </div>
         ))}

@@ -3,12 +3,14 @@ import type { DiscoverArtist, DiscoverResponse, SwipeResponse } from '../../shar
 import type { AppActions } from '../App';
 import { api } from '../api';
 import { Player } from '../components/Player';
+import { useT } from '../i18n';
 import { compact, initial, plural, when } from '../lib/format';
 import { useUi } from '../ui';
 
 const SWIPE_DISTANCE = 100;
 
 export function Discover({ me, refreshMe }: AppActions) {
+  const t = useT();
   const { toast } = useUi();
   const [queue, setQueue] = useState<DiscoverArtist[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -25,7 +27,7 @@ export function Discover({ me, refreshMe }: AppActions) {
     try {
       const r = await api<SwipeResponse>('/swipes', 'POST', { artistId: a.id, liked });
       await refreshMe();
-      toast(r.completed ? 'Daily challenge done! +10 pts' : liked ? `Saved ${a.name} · +3 pts` : 'Skipped · +1 pt');
+      toast(r.completed ? t('Daily challenge done! +10 pts') : liked ? t('Saved {name} · +3 pts', { name: a.name }) : t('Skipped · +1 pt'));
       window.setTimeout(() => {
         setLeaving(null);
         const rest = queue!.slice(1);
@@ -39,7 +41,7 @@ export function Discover({ me, refreshMe }: AppActions) {
   };
 
   if (error) return <div className="panel empty">{error}</div>;
-  if (!queue) return <div className="panel empty" aria-busy="true">Finding artists…</div>;
+  if (!queue) return <div className="panel empty" aria-busy="true">{t('Finding artists…')}</div>;
 
   const { today, goal } = me;
   const a = queue[0];
@@ -47,8 +49,8 @@ export function Discover({ me, refreshMe }: AppActions) {
     <>
       <div className="progress">
         <div className="row between">
-          <span className="eyebrow">{today >= goal ? 'Bonus round' : 'Daily challenge'}</span>
-          <span className="small muted">{Math.min(today, goal)} / {goal} artists</span>
+          <span className="eyebrow">{today >= goal ? t('Bonus round') : t('Daily challenge')}</span>
+          <span className="small muted">{t('{done} / {goal} artists', { done: Math.min(today, goal), goal })}</span>
         </div>
         <div className="bar"><div style={{ width: `${Math.min(100, (today / goal) * 100)}%` }} /></div>
       </div>
@@ -56,15 +58,15 @@ export function Discover({ me, refreshMe }: AppActions) {
         <>
           <SwipeCard key={a.id} artist={a} leaving={leaving} onSwipe={swipe} />
           <div className="actions">
-            <button className="btn" onClick={() => swipe(false)} disabled={!!leaving}>Skip</button>
-            <button className="btn primary" onClick={() => swipe(true)} disabled={!!leaving}>Save</button>
+            <button className="btn" onClick={() => swipe(false)} disabled={!!leaving}>{t('Skip')}</button>
+            <button className="btn primary" onClick={() => swipe(true)} disabled={!!leaving}>{t('Save')}</button>
           </div>
-          <p className="small muted center">Drag the card or use the buttons.</p>
+          <p className="small muted center">{t('Drag the card or use the buttons.')}</p>
         </>
       ) : (
         <div className="panel empty">
-          <h2>You’ve heard everyone</h2>
-          <p>New artists join every week. Check the Live tab for shows from the ones you saved.</p>
+          <h2>{t('You’ve heard everyone')}</h2>
+          <p>{t('New artists join every week. Check the Live tab for shows from the ones you saved.')}</p>
         </div>
       )}
     </>
@@ -72,6 +74,7 @@ export function Discover({ me, refreshMe }: AppActions) {
 }
 
 function SwipeCard({ artist: a, leaving, onSwipe }: { artist: DiscoverArtist; leaving: null | 'save' | 'skip'; onSwipe: (liked: boolean) => void }) {
+  const t = useT();
   const [dx, setDx] = useState(0);
   const [startX, setStartX] = useState<number | null>(null);
 
@@ -103,19 +106,19 @@ function SwipeCard({ artist: a, leaving, onSwipe }: { artist: DiscoverArtist; le
       <div className={`card-art ${a.image_url ? 'photo' : ''}`} style={art}
         onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={onUp}>
         {!a.image_url && <span className="card-initial" aria-hidden="true">{initial(a.name)}</span>}
-        <span className="stamp-label save" style={{ opacity: Math.max(0, Math.min(1, dx / SWIPE_DISTANCE)) }}>SAVE</span>
-        <span className="stamp-label skip" style={{ opacity: Math.max(0, Math.min(1, -dx / SWIPE_DISTANCE)) }}>SKIP</span>
-        {(a.genre || a.city) && <span className="chip">{[a.genre, a.city].filter(Boolean).join(' · ')}</span>}
+        <span className="stamp-label save" style={{ opacity: Math.max(0, Math.min(1, dx / SWIPE_DISTANCE)) }}>{t('SAVE')}</span>
+        <span className="stamp-label skip" style={{ opacity: Math.max(0, Math.min(1, -dx / SWIPE_DISTANCE)) }}>{t('SKIP')}</span>
+        {(a.genre || a.city) && <span className="chip">{[a.genre && t(a.genre), a.city].filter(Boolean).join(' · ')}</span>}
         <h3>{a.name}</h3>
       </div>
       <div className="card-body">
         {a.bio && <p className="muted m0">{a.bio}</p>}
         <div className="row wrap">
-          {a.matched?.length > 0 && <span className="chip taste">Because you like {a.matched.join(' & ')}</span>}
-          {a.language && <span className="chip">{a.language === 'Instrumental' ? 'Instrumental' : `Sings in ${a.language}`}</span>}
-          <span className="chip">{plural(a.saves, 'fan')} on gem.fm</span>
-          {a.external_fans != null && <span className="chip">{compact(a.external_fans)} on Deezer</span>}
-          {a.next_gig && <span className="chip hot">Live {when(a.next_gig)}</span>}
+          {a.matched?.length > 0 && <span className="chip taste">{t('Because you like {tags}', { tags: a.matched.map((m) => t(m)).join(t(' & ')) })}</span>}
+          {a.language && <span className="chip">{a.language === 'Instrumental' ? t('Instrumental') : t('Sings in {language}', { language: t(a.language) })}</span>}
+          <span className="chip">{plural(a.saves, '{n} fan on gem.fm', '{n} fans on gem.fm')}</span>
+          {a.external_fans != null && <span className="chip">{t('{n} on Deezer', { n: compact(a.external_fans) })}</span>}
+          {a.next_gig && <span className="chip hot">{t('Live {when}', { when: when(a.next_gig) })}</span>}
         </div>
         <Player artistId={a.id} spotifyUrl={a.spotify_url} deezerId={a.deezer_id} autoPlay />
       </div>

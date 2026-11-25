@@ -6,7 +6,7 @@ import { api, session } from '../api';
 import { ArtistImage } from '../components/ArtistImage';
 import { Logo } from '../components/Logo';
 import { Player } from '../components/Player';
-import { ago, compact, plural } from '../lib/format';
+import { ago, compact, count } from '../lib/format';
 import { useLoad } from '../lib/useLoad';
 import { useUi } from '../ui';
 
@@ -42,7 +42,7 @@ export function AdminPage() {
         <section className="stack">
           <div className="row between">
             <span className="eyebrow">Waiting for review</span>
-            <span className="small muted">{pending.data ? plural(pending.data.length, 'artist') : ''}</span>
+            <span className="small muted">{pending.data ? count(pending.data.length, 'artist') : ''}</span>
           </div>
           {pending.data?.length === 0 && <p className="small muted m0">Nothing pending. Run the radar to find new artists.</p>}
           {pending.data && <FillMissing artists={pending.data} status="pending" run={run} onDone={pending.reload} />}
@@ -112,7 +112,7 @@ function Radar({ onDone }: { onDone: () => void }) {
     try {
       const r = await api<RadarResult>('/radar', 'POST', { seeds, maxFans });
       setLast(r);
-      toast(r.added.length ? `Found ${plural(r.added.length, 'new artist')}` : 'No new artists this time');
+      toast(r.added.length ? `Found ${count(r.added.length, 'new artist')}` : 'No new artists this time');
       onDone();
     } catch (err) {
       toast((err as Error).message);
@@ -221,7 +221,7 @@ function FillMissing({ artists, status, run, onDone }: { artists: Artist[]; stat
   };
   return (
     <div className="panel row between">
-      <span className="small">{plural(missing, 'artist')} missing genre, hometown or language</span>
+      <span className="small">{count(missing, 'artist')} missing genre, hometown or language</span>
       <button type="button" className="btn small primary" onClick={fill} disabled={!!progress}>{progress ?? 'Auto-fill all'}</button>
     </div>
   );
@@ -350,7 +350,7 @@ function ArtistRow({ artist, run, onChange }: { artist: Artist; run: Run; onChan
             {artist.city && <span className="chip">{artist.city}</span>}
             {artist.language && <span className="chip">{artist.language}</span>}
             {artist.deezer_id ? <span className="chip">Deezer preview</span> : null}
-            <span className="chip">{plural(artist.saves, 'fan')}</span>
+            <span className="chip">{count(artist.saves, 'fan')}</span>
           </div>
         </div>
       </div>
@@ -390,14 +390,14 @@ function MissingPhotos({ artists, run, onDone }: { artists: Artist[]; run: Run; 
     setBusy(true);
     await run(async () => {
       const r = await api<{ checked: number; found: number }>('/artists/photos', 'POST');
-      if (!r.found) throw new Error(`No photos found for ${plural(r.checked, 'artist')}. Add their Spotify artist links.`);
+      if (!r.found) throw new Error(`No photos found for ${count(r.checked, 'artist')}. Add their Spotify artist links.`);
     }, 'Photos updated');
     setBusy(false);
     onDone();
   };
   return (
     <div className="panel row between">
-      <span className="small">{plural(missing, 'artist')} without a photo</span>
+      <span className="small">{count(missing, 'artist')} without a photo</span>
       <button type="button" className="btn small primary" onClick={fill} disabled={busy}>{busy ? 'Looking…' : 'Find photos'}</button>
     </div>
   );

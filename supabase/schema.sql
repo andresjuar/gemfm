@@ -137,6 +137,9 @@ update artists set tags = artist_tags(genre) where tags is distinct from artist_
 alter table users add column if not exists email text;
 alter table users add column if not exists password_hash text;
 create unique index if not exists users_email_idx on users (lower(email));
+-- Demo-day accounts: created by typing only a username (no email or password).
+-- Only these can be signed into without a password; seed users stay locked.
+alter table users add column if not exists demo boolean not null default false;
 create unique index if not exists users_handle_lower_idx on users (lower(handle));
 
 -- One row per signed-in browser. Only a SHA-256 of the cookie token is stored.
